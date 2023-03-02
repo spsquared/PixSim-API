@@ -1,0 +1,17 @@
+{
+  "name": "pixsim-api",
+  "version": "1.0.0",
+  "description": "PixSim-API for cross-game playing",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "author": "sp^2",
+  "license": "MIT",
+  "dependencies": {
+    "@types/node": "^18.0.6",
+    "node-fetch": "^3.2.6"
+  },
+  "devDependencies": {}
+}
