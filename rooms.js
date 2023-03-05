@@ -1,8 +1,37 @@
-Room = function(host) {
-  // stores the type of game room, a list of client sockets, and a host socket
-  this.type = 'none';
-  this.clients = [];
-  this.host = host;
-
-  // todo - forwarding stuff
-};
+class Room {
+    static list = [];
+    #type = 'none';
+    #host = null;
+    #opponent = null;
+    #spectators = [];
+    #allowSpectators = true;
+    #open = true;
+    #public = true;
+    constructor(host) {
+        this.#host = host;
+        Room.list.push(this);
+        host.on()
+    }
+    type() {
+        return this.#type;
+    }
+    setType(type) {
+        if (type != 'vaultwars' && type != 'resourcerace') return;
+        this.#type = type;
+    }
+    hostSocket() {
+        return this.#host;
+    }
+    opponentSocket() {
+        return this.#opponent;
+    }
+    spectatorList() {
+        return Arrays.from(this.#spectators);
+    }
+    isOpen() {
+        return this.#open;
+    }
+    isPublic() {
+        return this.#public;
+    }
+}
