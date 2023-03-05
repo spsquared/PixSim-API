@@ -23,7 +23,7 @@ module.exports = class PixSimAPIHandler {
     }
 
     getPublicRooms(type) {
-        const rooms = Room.getPublicRooms();
+        const rooms = Room.publicRooms();
         const games = [];
         for (let room of rooms) {
             if (room.type() == type) games.push({
