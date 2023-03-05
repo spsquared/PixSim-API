@@ -79,6 +79,7 @@ module.exports = class Room {
         for (let ev of this.#addedHostListeners) {
             this.#host.removeAllListeners(ev);
         }
+        Room.#list.splice(Room.#list.indexOf(this), 1);
     }
 
     static publicRooms() {
