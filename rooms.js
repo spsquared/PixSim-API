@@ -86,5 +86,6 @@ module.exports = class Room {
         for (room of Room.#list) {
             if (room.isOpen() && room.isPublic()) ret.push(room);
         }
+        return ret;
     }
 }
