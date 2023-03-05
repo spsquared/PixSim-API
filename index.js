@@ -17,6 +17,9 @@ app.use(limiter);
 
 app.get('/', (req, res) => res.send({ active: true }));
 
+const PixSimAPIHandler = require('./apihandler.js');
+const Room = require('./rooms.js');
+
 if (process.env.PORT) {
     server.listen(process.env.PORT);
 } else {
@@ -63,24 +66,31 @@ io.on('connection', function (socket) {
         socket.emit('publicKey', await subtle.exportKey('jwk', (await keys).publicKey));
     });
 
+    // create handler
+    const handler = new PixSimAPIHandler(socket, RSAdecode);
+
     // manage disconnections
     socket.on('disconnect', async function () {
         socket.emit('disconnection: ' + ip);
+        handler.destroy();
         clearInterval(timeoutcheck);
         clearInterval(packetcheck);
     });
     socket.on('disconnected', async function () {
         socket.emit('disconnection: ' + ip);
+        handler.destroy();
         clearInterval(timeoutcheck);
         clearInterval(packetcheck);
     });
     socket.on('timeout', async function () {
         socket.emit('disconnection: ' + ip);
+        handler.destroy();
         clearInterval(timeoutcheck);
         clearInterval(packetcheck);
     });
     socket.on('error', async function () {
         socket.emit('disconnection: ' + ip);
+        handler.destroy();
         clearInterval(timeoutcheck);
         clearInterval(packetcheck);
     });
@@ -130,12 +140,13 @@ setInterval(function () {
 function stop() {
     io.emit('disconnceted')
     io.close();
+    process.exit(0);
 };
 process.on('SIGTERM', stop);
 process.on('SIGINT', stop);
 process.on('SIGQUIT', stop);
 process.on('SIGILL', stop);
 
-async function RSAdecodeAPI(buf) {
+async function RSAdecode(buf) {
     return new TextDecoder().decode(await subtle.decrypt({ name: "RSA-OAEP" }, (await keys).privateKey, buf));
 };
