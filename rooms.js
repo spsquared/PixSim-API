@@ -83,7 +83,7 @@ module.exports = class Room {
 
     static publicRooms() {
         const ret = [];
-        for (room of Room.#list) {
+        for (let room of Room.#list) {
             if (room.isOpen() && room.isPublic()) ret.push(room);
         }
         return ret;

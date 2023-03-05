@@ -37,6 +37,6 @@ module.exports = class PixSimAPIHandler {
     }
 
     destroy() {
-        this.#currentRoom.destroy();
+        if (this.#currentRoom) this.#currentRoom.destroy();
     }
 }
