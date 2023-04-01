@@ -1,1 +1,5 @@
 node_modules/
+
+# replit files (replit wants to make initial commits everywhere because of these)
+.replit
+replit.nix
