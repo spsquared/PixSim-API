@@ -18,7 +18,6 @@ app.use(limiter);
 app.get('/', (req, res) => res.send({ active: true }));
 
 const PixSimAPIHandler = require('./apihandler.js');
-const Room = require('./rooms.js');
 
 if (process.env.PORT) {
     server.listen(process.env.PORT);
@@ -46,10 +45,9 @@ const io = new (require('socket.io')).Server(server, {
     pingTimeout: 10000,
     upgradeTimeout: 300000
 });
-io.on('connection', function (socket) {
+io.on('connection', async function (socket) {
     // connection DOS detection
-    socket.handshake.headers['x-forwarded-for'] = socket.handshake.headers['x-forwarded-for'] ?? '127.0.0.1';
-    const ip = socket.handshake.headers['x-forwarded-for'];
+    const ip = socket.handshake.headers['x-forwarded-for'] ?? socket.handshake.address ?? '127.0.0.1';
     recentConnections[ip] = (recentConnections[ip] ?? 0) + 1;
     if (recentConnections[ip] > 3) {
         if (!recentConnectionKicks[ip]) log(ip + ' was kicked for connection spam.');
@@ -61,13 +59,9 @@ io.on('connection', function (socket) {
         return;
     }
     console.log('connection: ' + ip);
-    // public RSA key
-    socket.once('requestPublicKey', async function () {
-        socket.emit('publicKey', await subtle.exportKey('jwk', (await keys).publicKey));
-    });
 
     // create handler
-    const handler = new PixSimAPIHandler(socket, RSAdecode);
+    const handler = new PixSimAPIHandler(socket, RSAdecode, await subtle.exportKey('jwk', (await keys).publicKey));
 
     // manage disconnections
     socket.on('disconnect', async function () {
