@@ -17,7 +17,7 @@ app.use(limiter);
 
 app.get('/', (req, res) => res.send({ active: true }));
 
-const PixSimAPIHandler = require('./apihandler.js');
+const { PixSimAPIHandler } = require('./api');
 
 if (process.env.PORT) {
     server.listen(process.env.PORT);
