@@ -165,7 +165,7 @@ class PixSimAPIHandler {
 class Room {
     static #list = new Set();
     #id = '';
-    #type = 'vaultwars';
+    #type = 'pixelcrash';
     #host = null;
     #teamA = new Set();
     #teamB = new Set();
@@ -308,7 +308,7 @@ class Room {
     }
 
     set gameType(type) {
-        if ((type === 'vaultwars' || type === 'resourcerace') && this.#open) this.#type = type;
+        if ((type === 'pixelcrash' || type === 'resourcerace') && this.#open) this.#type = type;
     }
     set allowSpectators(bool) {
         if (typeof bool == 'boolean' && this.#open) this.#allowSpectators = bool;
@@ -317,7 +317,7 @@ class Room {
         if (typeof bool == 'boolean' && this.#open) this.#public = bool;
     }
     set teamSize(size) {
-        if (typeof size == 'number' && size >= 1 && size <= 3 && this.#open) this.#teamSize = size;
+        if (typeof size == 'number' && size >= 1 && size <= 3 && this.#open) this.#teamSize = parseInt(size);
         this.#updateTeamLists();
     }
 
