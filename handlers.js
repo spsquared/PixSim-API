@@ -189,14 +189,8 @@ class Room {
         this.#host.addExternalListener(this.#id, 'teamSize', (size) => this.teamSize = size);
         this.#host.addExternalListener(this.#id, 'kickPlayer', (username) => this.kick(username));
         this.#host.addExternalListener(this.#id, 'movePlayer', (data) => this.move(data.username, data.team));
-        this.#host.addExternalListener(this.#id, 'startGame', () => this.#startGame());
+        this.#host.addExternalListener(this.#id, 'startGame', () => this.#start());
         this.#host.send('gameCode', this.#id);
-    }
-
-    #startGame() {
-        if (this.#teamA.size == this.#teamSize && this.#teamB.size == this.#teamSize && this.#open) {
-            // start the game and begin proxy mode
-        }
     }
 
     /**
@@ -305,6 +299,15 @@ class Room {
         };
         this.#host.send('updateTeamLists', teams);
         this.#host.sendToGameRoom('updateTeamLists', teams);
+    }
+    /**
+     * Starts the game
+     */
+    #start() {
+        if (this.#teamA.size > 0 && this.#teamB.size > 0 && this.#open) {
+            this.#open = false;
+            // prompt host to do relay tests to ensure that proxy is working
+        }
     }
 
     set gameType(type) {
