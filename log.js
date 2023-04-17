@@ -11,7 +11,7 @@ class Logger {
         try {
             let filePath = path + 'log.log';
             if (fs.existsSync(filePath)) {
-                let dirPath = path + 'log/';
+                let dirPath = path + 'logs/';
                 if (!fs.existsSync(dirPath)) fs.mkdirSync(dirPath);
                 let fileCount = fs.readdirSync(dirPath).length;
                 fs.renameSync(filePath, dirPath + `log-${fileCount}.log`);
