@@ -165,6 +165,10 @@ class PixSimAPIHandler {
     destroy() {
         if (this.#currentRoom) this.#currentRoom.leave(this);
     }
+
+    static get logger() {
+        return this.#logger;
+    }
 }
 
 class Room {
@@ -375,6 +379,9 @@ class Room {
         return ret;
     }
 }
+
+process.on('uncaughtException', (err) => PixSimAPIHandler.logger.error(err));
+process.on('unhandledRejection', (err) => PixSimAPIHandler.logger.error(err));
 
 module.exports.PixSimAPIHandler = PixSimAPIHandler;
 module.exports.Room = Room;
