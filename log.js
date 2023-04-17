@@ -1,5 +1,8 @@
 const fs = require('fs');
 
+/**
+ * A simple logging class with timestamps and logging levels.
+ */
 class Logger {
     #file;
 
@@ -20,6 +23,10 @@ class Logger {
         }
     }
 
+    /**
+     * Get a timestamp in YYYY-MM-DD [HH:MM] format.
+     * @returns Timestamp in YYYY-MM-DD [HH:MM] format
+     */
     currentTimestamp() {
         const time = new Date();
         let month = time.getMonth().toString();
@@ -32,19 +39,34 @@ class Logger {
         if(minute.length == 1) minute = 0 + minute;
         return `${time.getFullYear()}-${month}-${day} [${hour}:${minute}]`;
     }
+    /**
+     * Append a debug-level entry to the log.
+     * @param {string} text Text
+     */
     log(text) {
         let prefix = `${this.currentTimestamp()}   LOG | `;
         fs.appendFile(this.#file, `${prefix}${text.toString().replaceAll('\n', `\n${prefix}`)}\n`, {encoding: 'utf-8'}, (err) => {if (err) console.error(err)});
     }
+    /**
+     * Append a warning-level entry to the log.
+     * @param {string} text Text
+     */
     warn(text) {
         let prefix = `${this.currentTimestamp()}  WARN | `;
         fs.appendFile(this.#file, `${prefix}${text.toString().replaceAll('\n', `\n${prefix}`)}\n`, {encoding: 'utf-8'}, (err) => {if (err) console.error(err)});
     }
+    /**
+     * Append an error-level entry to the log.
+     * @param {string} text Text
+     */
     error(text) {
         let prefix = `${this.currentTimestamp()} ERROR | `;
         fs.appendFile(this.#file, `${prefix}${text.toString().replaceAll('\n', `\n${prefix}`)}\n`, {encoding: 'utf-8'}, (err) => {if (err) console.error(err)});
     }
 
+    /**
+     * Safely closes the logging session.
+     */
     destroy() {
         fs.closeSync(this.#file);
     }

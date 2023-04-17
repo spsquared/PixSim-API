@@ -2,6 +2,9 @@ const { Socket } = require('socket.io');
 const { randomBytes } = require('crypto');
 const Logger = require('./log');
 
+/**
+ * A handler for a single connection to the PixSim API.
+ */
 class PixSimAPIHandler {
     static #logger = new Logger('./');
 
@@ -21,16 +24,16 @@ class PixSimAPIHandler {
             if (typeof data != 'object' || data === null) socket.disconnect();
             if (data.gameType != 'rps' && data.gameType != 'bps') socket.disconnect();
             this.#ip = socket.handshake.headers['x-forwarded-for'] ?? socket.handshake.address ?? '127.0.0.1';
-            PixSimAPIHandler.#logger.log('API Connection from ' + this.#ip);
+            this.#username = data.username;
+            PixSimAPIHandler.logger.log(`API Connection from ${this.debugId}`);
             // verify password
             try {
                 // console.log(await this.#decode(data.password));
             } catch (err) {
-                console.warn(this.#ip + ' kicked because password decoding failed');
-                PixSimAPIHandler.#logger.warn(this.#ip + ' kicked - password decode error');
+                console.warn(`${this.debugId} kicked because password decoding failed`);
+                PixSimAPIHandler.logger.warn(`${this.debugId} kicked - password decode error:\n${err}`);
                 socket.disconnect();
             }
-            this.#username = data.username;
             socket.emit('clientInfoRecieved');
             this.#socket.on('createGame', () => this.#createGame());
             this.#socket.on('getPublicRooms', (data) => this.#getPublicRooms(data));
@@ -158,11 +161,15 @@ class PixSimAPIHandler {
     get username() {
         return this.#username;
     }
+    get debugId() {
+        return `${this.#username} (${this.#ip})`;
+    }
 
     /**
      * Safely stops active games.
      */
     destroy() {
+        PixSimAPIHandler.logger.log(`${this.debugId} disconnected`);
         if (this.#currentRoom) this.#currentRoom.leave(this);
     }
 
@@ -188,6 +195,7 @@ class Room {
     constructor(handler) {
         if (!(handler instanceof PixSimAPIHandler)) throw new Error('handler must be a PixSimAPIHandler');
         this.#id = randomBytes(4).toString('hex').toUpperCase();
+        PixSimAPIHandler.logger.log(`${handler.debugId} created game ${this.#id}`);
         this.#host = handler;
         Room.#list.add(this);
         this.#host.joinGameRoom(this.#id);
@@ -212,6 +220,7 @@ class Room {
     join(handler, spectating) {
         if (!(handler instanceof PixSimAPIHandler) || typeof spectating != 'boolean' || !this.#open) return;
         if (spectating || (this.#teamA.size >= this.#teamSize && this.#teamB.size >= this.#teamSize)) {
+            PixSimAPIHandler.logger.log(`${handler.debugId} joined game ${this.#id} as a spectator`);
             this.#spectators.add(handler);
             if (!spectating) handler.send('forcedSpectator');
             handler.joinGameRoom(this.#id);
@@ -219,9 +228,11 @@ class Room {
             this.#updateTeamLists();
         } else if (this.#bannedPlayers.indexOf(handler) == -1) {
             if (this.#teamB.size < this.#teamA.size) {
+                PixSimAPIHandler.logger.log(`${handler.debugId} join game ${this.#id} on team Beta`);
                 this.#teamB.add(handler);
                 handler.send('joinSuccess', 2);
             } else {
+                PixSimAPIHandler.logger.log(`${handler.debugId} join game ${this.#id} on team Alpha`);
                 this.#teamA.add(handler);
                 handler.send('joinSuccess', 1);
             }
@@ -252,6 +263,7 @@ class Room {
         else if (this.#teamA.has(handler)) this.#teamA.delete(handler);
         else if (this.#teamB.has(handler)) this.#teamB.delete(handler);
         else return;
+        PixSimAPIHandler.logger.log(`${handler.debugId} switched to ${team == 0 ? 'spectators' : team == 1 ? 'team Alpha' : 'team Beta'} in game ${this.#id}`);
         if (team == 0) this.#spectators.add(handler);
         else if (team == 1) this.#teamA.add(handler);
         else this.#teamB.add(handler);
@@ -267,6 +279,7 @@ class Room {
         else if (this.#teamA.has(handler)) this.#teamA.delete(handler);
         else if (this.#teamB.has(handler)) this.#teamB.delete(handler);
         else return;
+        PixSimAPIHandler.logger.log(`${handler.debugId} left game ${this.#id}`);
         handler.leaveGameRoom(this.#id);
         handler.removeAllExternalListeners(this.#id)
         if (handler == this.#host) this.destroy();
@@ -292,6 +305,7 @@ class Room {
         ?? Array.from(this.#teamA).find(handler => handler.username == username)
         ?? Array.from(this.#teamB).find(handler => handler.username == username));
         if (handler) {
+            PixSimAPIHandler.logger.log(`${handler.debugId} was kicked from game ${this.#id}`);
             handler.send('gameKicked');
             handler.leaveGame();
         }
@@ -314,6 +328,7 @@ class Room {
      */
     #start() {
         if (this.#teamA.size > 0 && this.#teamB.size > 0 && this.#open) {
+            PixSimAPIHandler.logger.log(`game ${this.#id} started`);
             this.#open = false;
             // prompt host to do relay tests to ensure that proxy is working
         }
@@ -355,7 +370,11 @@ class Room {
         return this.#public;
     }
 
+    /**
+     * Safely stops the game and cleans up.
+     */
     destroy() {
+        PixSimAPIHandler.logger.log(`game ${this.#id} closed`);
         for (const handler of this.#teamA) {
             handler.send('gameEnd');
             handler.leaveGame();
@@ -371,6 +390,11 @@ class Room {
         Room.#list.delete(this);
     }
 
+    /**
+     * Gets a list of all open public games, considering whether spectators are on or not.
+     * @param {boolean} spectating Only show rooms with spectators on
+     * @returns An array of Rooms
+     */
     static publicRooms(spectating) {
         const ret = [];
         for (const room of Room.#list) {
@@ -380,8 +404,8 @@ class Room {
     }
 }
 
-process.on('uncaughtException', (err) => PixSimAPIHandler.logger.error(err));
-process.on('unhandledRejection', (err) => PixSimAPIHandler.logger.error(err));
+process.on('uncaughtException', (err) => PixSimAPIHandler.logger.error(err.stack));
+process.on('unhandledRejection', (err) => PixSimAPIHandler.logger.error(err.stack));
 
 module.exports.PixSimAPIHandler = PixSimAPIHandler;
 module.exports.Room = Room;
