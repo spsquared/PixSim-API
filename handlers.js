@@ -1,9 +1,12 @@
 const { Socket } = require('socket.io');
 const { randomBytes } = require('crypto');
+const Logger = require('./log');
 
 class PixSimAPIHandler {
+    static #logger = new Logger('./');
+
     #socket = null;
-    #decode = new Function();;
+    #decode = new Function();
     #currentRoom = null;
     #ip = '';
     #username = 'Unknown';
@@ -18,11 +21,13 @@ class PixSimAPIHandler {
             if (typeof data != 'object' || data === null) socket.disconnect();
             if (data.gameType != 'rps' && data.gameType != 'bps') socket.disconnect();
             this.#ip = socket.handshake.headers['x-forwarded-for'] ?? socket.handshake.address ?? '127.0.0.1';
+            PixSimAPIHandler.#logger.log('API Connection from ' + this.#ip);
             // verify password
             try {
                 // console.log(await this.#decode(data.password));
             } catch (err) {
-                console.error(this.#ip + ' kicked because password decoding failed');
+                console.warn(this.#ip + ' kicked because password decoding failed');
+                PixSimAPIHandler.#logger.warn(this.#ip + ' kicked - password decode error');
                 socket.disconnect();
             }
             this.#username = data.username;

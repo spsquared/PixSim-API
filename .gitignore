@@ -1,4 +1,9 @@
+# npm packages
 node_modules/
+
+# log files
+logs/
+*.log
 
 # replit files (replit wants to make initial commits everywhere because of these)
 .replit
