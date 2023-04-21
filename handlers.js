@@ -48,6 +48,7 @@ class PixSimAPIHandler {
             this.#socket.disconnect();
             return;
         }
+        if (this.#currentRoom != null) return;
         this.#lastCreateGame = performance.now();
         this.#currentRoom = new Room(this);
         this.#currentRoom.join(this, false);
