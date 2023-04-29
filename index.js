@@ -5,9 +5,12 @@ const server = require('http').Server(app);
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 const limiter = rateLimit({
-    windowMs: 1000,
-    max: 300,
-    handler: function (req, res, options) { }
+    windowMs: 250,
+    max: 25,
+    handler: function (req, res, options) {
+        console.log('Rate limiting triggered by ' + req.ip || req.socket.remoteAddress);
+        PixSimAPIHandler.logger.warn(`Potential DOS attack from ${req.ip || req.socket.remoteAddress}!`);
+    }
 });
 app.use(cors({
     origin: '*',
@@ -15,7 +18,7 @@ app.use(cors({
 }));
 app.use(limiter);
 
-app.get('/', (req, res) => res.send({ active: true }));
+app.get('/', (req, res) => res.send({ active: true, time: Date.now() }));
 
 const { PixSimAPIHandler } = require('./handlers');
 
@@ -47,10 +50,13 @@ const io = new (require('socket.io')).Server(server, {
 });
 io.on('connection', async function (socket) {
     // connection DOS detection
-    const ip = socket.handshake.headers['x-forwarded-for'] ?? socket.handshake.address ?? '127.0.0.1';
+    const ip = socket.handshake.headers['x-forwarded-for'] ?? socket.handshake.address ?? socket.request.socket.remoteAddress ?? 'unknown';
     recentConnections[ip] = (recentConnections[ip] ?? 0) + 1;
     if (recentConnections[ip] > 3) {
-        if (!recentConnectionKicks[ip]) log(ip + ' was kicked for connection spam.');
+        if (!recentConnectionKicks[ip]) {
+            log(ip + ' was kicked for connection spam.');
+            PixSimAPIHandler.logger.warn(`Potential DOS attack from ${ip}!`);
+        }
         recentConnectionKicks[ip] = true;
         socket.emit('disconnection: ' + ip);
         socket.removeAllListeners();
@@ -65,25 +71,19 @@ io.on('connection', async function (socket) {
 
     // manage disconnections
     socket.on('disconnect', async function () {
-        socket.emit('disconnection: ' + ip);
-        handler.destroy();
-        clearInterval(timeoutcheck);
-        clearInterval(packetcheck);
-    });
-    socket.on('disconnected', async function () {
-        socket.emit('disconnection: ' + ip);
+        console.log('disconnection: ' + ip);
         handler.destroy();
         clearInterval(timeoutcheck);
         clearInterval(packetcheck);
     });
     socket.on('timeout', async function () {
-        socket.emit('disconnection: ' + ip);
+        console.log('disconnection: ' + ip);
         handler.destroy();
         clearInterval(timeoutcheck);
         clearInterval(packetcheck);
     });
     socket.on('error', async function () {
-        socket.emit('disconnection: ' + ip);
+        console.log('disconnection: ' + ip);
         handler.destroy();
         clearInterval(timeoutcheck);
         clearInterval(packetcheck);
@@ -118,6 +118,7 @@ io.on('connection', async function (socket) {
             clearInterval(timeoutcheck);
             clearInterval(packetcheck);
             console.log(ip + ' was kicked for packet spam');
+            PixSimAPIHandler.logger.warn(`Potential DOS attack from ${handler.debugId}!`);
             socket.disconnect();
         }
     }, 1000);

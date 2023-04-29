@@ -3,9 +3,10 @@ const { randomBytes } = require('crypto');
 const Logger = require('./log');
 
 /**
- * A handler for a single connection to the PixSim API.
+ * A handler for a single connection to the PixSim API
  */
 class PixSimAPIHandler {
+    static #loggerLogsEverything = false;
     static #logger = new Logger('./');
 
     #socket = null;
@@ -25,27 +26,30 @@ class PixSimAPIHandler {
             if (data.gameType != 'rps' && data.gameType != 'bps') socket.disconnect();
             this.#ip = socket.handshake.headers['x-forwarded-for'] ?? socket.handshake.address ?? '127.0.0.1';
             this.#username = data.username;
-            PixSimAPIHandler.logger.log(`API Connection from ${this.debugId}`);
+            if (PixSimAPIHandler.logEverything) PixSimAPIHandler.logger.log(`Connection: ${this.debugId}`);
             // verify password
             try {
                 // console.log(await this.#decode(data.password));
             } catch (err) {
                 console.warn(`${this.debugId} kicked because password decoding failed`);
-                PixSimAPIHandler.logger.warn(`${this.debugId} kicked - password decode error:\n${err}`);
-                socket.disconnect();
+                this.destroy('Invalid encoded password', true);
+                return;
             }
             socket.emit('clientInfoRecieved');
             this.#socket.on('createGame', () => this.#createGame());
             this.#socket.on('getPublicRooms', (data) => this.#getPublicRooms(data));
             this.#socket.on('joinGame', (data) => this.#joinGame(data));
             this.#socket.on('leaveGame', () => this.leaveGame());
+            this.#socket.on('disconnect', (reason) => {
+                if (PixSimAPIHandler.logEverything) PixSimAPIHandler.logger.log(`Disconnection: ${this.debugId} - ${reason}`)
+            });
         });
         this.#socket.emit('requestClientInfo', publicKey);
     }
 
     #createGame() {
         if (performance.now() - this.#lastCreateGame < 1000) {
-            this.#socket.disconnect();
+            this.destroy('Game creation spam', true);
             return;
         }
         if (this.#currentRoom != null) return;
@@ -56,6 +60,7 @@ class PixSimAPIHandler {
     }
     #getPublicRooms(data) {
         if (typeof data != 'object') return;
+        if (PixSimAPIHandler.logEverything) PixSimAPIHandler.logger.log(`${this.debugId} requested list of public games`);
         const rooms = Room.publicRooms(data.spectating);
         const games = [];
         for (const room of rooms) {
@@ -72,6 +77,7 @@ class PixSimAPIHandler {
     }
     #joinGame(data) {
         if (typeof data != 'object' || this.#currentRoom != null) return;
+        if (PixSimAPIHandler.logEverything) PixSimAPIHandler.logger.log(`${this.debugId} attempted to join game ${data.code}`);
         const rooms = Room.publicRooms(data.spectating);
         for (const room of rooms) {
             if (room.id == data.code) {
@@ -159,30 +165,59 @@ class PixSimAPIHandler {
         }
     }
 
+    /**
+     * Username of the player
+     */
     get username() {
         return this.#username;
     }
+    /**
+     * The debug id of the player (username and ip)
+     */
     get debugId() {
         return `${this.#username} (${this.#ip})`;
     }
 
     /**
-     * Safely stops active games.
+     * Safely disconnects the handler and leaves the game
+     * @param reason Reason the handler was disconnected
+     * @param reason Whether the disconnection was forced by a kick
      */
-    destroy() {
-        PixSimAPIHandler.logger.log(`${this.debugId} disconnected`);
+    destroy(reason = 'disconnected', kicked) {
+        if (kicked) {
+            PixSimAPIHandler.logger.warn(`${this.debugId} kicked - ${reason}`);
+        } else {
+            PixSimAPIHandler.logger.log(`${this.debugId} disconnected`);
+        }
         if (this.#currentRoom) this.#currentRoom.leave(this);
+        this.#socket.disconnect();
     }
 
+    static set logEverything(bool) {
+        if (typeof bool == 'boolean') this.#loggerLogsEverything = bool;
+    }
+    /**
+     * Whether to log everything that happens
+     */
+    static get logEverything() {
+        return this.#loggerLogsEverything;
+    }
+    /**
+     * The Logger instance used for logging
+     */
     static get logger() {
         return this.#logger;
     }
 }
 
+/**
+ * A single game room coordinating and connecting the host and clients
+ */
 class Room {
     static #list = new Set();
     #id = '';
     #type = 'pixelcrash';
+    #gameModeHandler = null;
     #host = null;
     #teamA = new Set();
     #teamB = new Set();
@@ -218,7 +253,7 @@ class Room {
      * @param {PixSimAPIHandler} handler PixSimAPIHandler to add to the room
      * @param {boolean} spectating Whether to join as a spectator or not
      */
-    join(handler, spectating) {
+    join(handler, spectating = false) {
         if (!(handler instanceof PixSimAPIHandler) || typeof spectating != 'boolean' || !this.#open) return;
         if (spectating || (this.#teamA.size >= this.#teamSize && this.#teamB.size >= this.#teamSize)) {
             PixSimAPIHandler.logger.log(`${handler.debugId} joined game ${this.#id} as a spectator`);
@@ -226,19 +261,20 @@ class Room {
             if (!spectating) handler.send('forcedSpectator');
             handler.joinGameRoom(this.#id);
             handler.send('joinSuccess', 0);
+            handler.send('gameType', this.#type);
             this.#updateTeamLists();
-        } else if (this.#bannedPlayers.indexOf(handler) == -1) {
+        } else if (this.#bannedPlayers.indexOf(handler.username) == -1) {
             if (this.#teamB.size < this.#teamA.size) {
-                PixSimAPIHandler.logger.log(`${handler.debugId} join game ${this.#id} on team Beta`);
+                PixSimAPIHandler.logger.log(`${handler.debugId} joined game ${this.#id} on team Beta`);
                 this.#teamB.add(handler);
                 handler.send('joinSuccess', 2);
             } else {
-                PixSimAPIHandler.logger.log(`${handler.debugId} join game ${this.#id} on team Alpha`);
+                PixSimAPIHandler.logger.log(`${handler.debugId} joined game ${this.#id} on team Alpha`);
                 this.#teamA.add(handler);
                 handler.send('joinSuccess', 1);
             }
             handler.joinGameRoom(this.#id);
-            handler.addExternalListener(this.#id, 'changeTeam', (team) => this.changeTeam(handler, team));
+            handler.send('gameType', this.#type);
             this.#updateTeamLists();
         }
     }
@@ -292,9 +328,12 @@ class Room {
     move(username, team) {
         if (typeof username != 'string' || typeof team != 'number' || team < 0 || team > 2 || !this.#open) return;
         let handler = (Array.from(this.#spectators).find(handler => handler.username == username)
-        ?? Array.from(this.#teamA).find(handler => handler.username == username)
-        ?? Array.from(this.#teamB).find(handler => handler.username == username));
-        if (handler) this.changeTeam(handler, team);
+            ?? Array.from(this.#teamA).find(handler => handler.username == username)
+            ?? Array.from(this.#teamB).find(handler => handler.username == username));
+        if (handler) {
+            if (PixSimAPIHandler.logEverything) PixSimAPIHandler.logger.log(`${this.#host.debugId} moved ${handler.debugId}`);
+            this.changeTeam(handler, team);
+        }
     }
     /**
      * Kicks a player from the room (does not ban them).
@@ -303,10 +342,10 @@ class Room {
     kick(username) {
         if (typeof username != 'string') return;
         let handler = (Array.from(this.#spectators).find(handler => handler.username == username)
-        ?? Array.from(this.#teamA).find(handler => handler.username == username)
-        ?? Array.from(this.#teamB).find(handler => handler.username == username));
+            ?? Array.from(this.#teamA).find(handler => handler.username == username)
+            ?? Array.from(this.#teamB).find(handler => handler.username == username));
         if (handler) {
-            PixSimAPIHandler.logger.log(`${handler.debugId} was kicked from game ${this.#id}`);
+            PixSimAPIHandler.logger.log(`${this.#host.debugId} kicked ${handler.debugId} from game ${this.#id}`);
             handler.send('gameKicked');
             handler.leaveGame();
         }
@@ -328,45 +367,100 @@ class Room {
      * Starts the game
      */
     #start() {
-        if (this.#teamA.size > 0 && this.#teamB.size > 0 && this.#open) {
-            PixSimAPIHandler.logger.log(`game ${this.#id} started`);
+        if (this.#teamA.size == this.#teamSize && this.#teamB.size == this.#teamSize && this.#open) {
+            PixSimAPIHandler.logger.log(`Game ${this.#id} started`);
             this.#open = false;
-            // prompt host to do relay tests to ensure that proxy is working
+            if (PixSimAPIHandler.logEverything) PixSimAPIHandler.logger.log(`Game ${this.#id} pinging players...`);
+            new Promise((resolve, reject) => {
+                let responses = 0;
+                for (let player of [...this.#teamA, ...this.#teamB]) {
+                    let res = () => {
+                        responses++;
+                        player.removeExternalListener(this.#id, 'pong', res);
+                        if (responses == this.#teamSize * 2) resolve();
+                    };
+                    player.addExternalListener(this.#id, 'pong', res);
+                    player.send('ping');
+                }
+            }).then(() => {
+                this.#host.addExternalListener(this.#id, 'tick', (tick) => this.#handleTick(tick));
+            });
         }
+    }
+    #handleTick(tick) {
+        if (typeof tick != 'object' || !Buffer.isBuffer(tick.grid) || tick.grid.length % 2 != 0 || typeof tick.origin != 'string') {
+            console.warn(`${this.#host.debugId} kicked for sending invalid game tick data`);
+            this.#host.destroy('Invalid game tick data', true);
+        }
+        this.#host.sendToGameRoom('tick', tick);
     }
 
     set gameType(type) {
-        if ((type === 'pixelcrash' || type === 'resourcerace') && this.#open) this.#type = type;
+        if ((type === 'pixelcrash' || type === 'resourcerace') && this.#open) {
+            this.#type = type;
+            this.#host.sendToGameRoom('gameType', this.#type);
+            if (PixSimAPIHandler.logEverything) PixSimAPIHandler.logger.log(`game ${this.#id} set gameType to ${this.#type}`);
+        }
     }
     set allowSpectators(bool) {
-        if (typeof bool == 'boolean' && this.#open) this.#allowSpectators = bool;
+        if (typeof bool == 'boolean' && this.#open) {
+            this.#allowSpectators = bool;
+            if (PixSimAPIHandler.logEverything) PixSimAPIHandler.logger.log(`game ${this.#id} set allowSpectators to ${this.#allowSpectators}`);
+        }
     }
     set publicGame(bool) {
-        if (typeof bool == 'boolean' && this.#open) this.#public = bool;
+        if (typeof bool == 'boolean' && this.#open) {
+            this.#public = bool;
+            if (PixSimAPIHandler.logEverything) PixSimAPIHandler.logger.log(`game ${this.#id} set publicGame to ${this.#public}`);
+        }
     }
     set teamSize(size) {
-        if (typeof size == 'number' && size >= 1 && size <= 3 && this.#open) this.#teamSize = parseInt(size);
-        this.#updateTeamLists();
+        if (typeof size == 'number' && size >= 1 && size <= 3 && this.#open) {
+            this.#teamSize = parseInt(size);
+            this.#updateTeamLists();
+            if (PixSimAPIHandler.logEverything) PixSimAPIHandler.logger.log(`game ${this.#id} set teamSize to ${this.#teamSize}`);
+        }
     }
 
+    /**
+     * The ID, which is also the game code
+     */
     get id() {
         return this.#id;
     }
-    get type() {
+    /**
+     * Game mode
+     */
+    get gameType() {
         return this.#type;
     }
+    /**
+     * Username of the host
+     */
     get hostName() {
         return this.#host.username;
     }
+    /**
+     * The size of the teams
+     */
     get teamSize() {
         return this.#teamSize;
     }
+    /**
+     * Whether spectators are allowed in this game
+     */
     get allowSpectators() {
         return this.#allowSpectators;
     }
+    /**
+     * Whether players are still allowed to join
+     */
     get isOpen() {
         return this.#open;
     }
+    /**
+     * Whether to be listed on the public game lists
+     */
     get isPublic() {
         return this.#public;
     }
@@ -405,8 +499,18 @@ class Room {
     }
 }
 
-process.on('uncaughtException', (err) => PixSimAPIHandler.logger.error(err.stack));
-process.on('unhandledRejection', (err) => PixSimAPIHandler.logger.error(err.stack));
+process.on('uncaughtException', (err) => {
+    PixSimAPIHandler.logger.error(err.stack);
+    console.error(err)
+});
+process.on('unhandledRejection', (err) => {
+    PixSimAPIHandler.logger.error(err.stack);
+    console.error(err)
+});
+process.on('SIGTERM', () => PixSimAPIHandler.logger.destroy());
+process.on('SIGINT', () => PixSimAPIHandler.logger.destroy());
+process.on('SIGQUIT', () => PixSimAPIHandler.logger.destroy());
+process.on('SIGILL', () => PixSimAPIHandler.logger.destroy());
 
 module.exports.PixSimAPIHandler = PixSimAPIHandler;
 module.exports.Room = Room;

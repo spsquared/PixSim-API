@@ -18,33 +18,36 @@ class Logger {
             }
             this.#file = fs.openSync(filePath, 'a');
             console.log('Logger instance created');
+            this.log('Logger instance created');
         } catch (err) {
             console.error(err);
         }
     }
 
     /**
-     * Get a timestamp in YYYY-MM-DD [HH:MM] format.
-     * @returns Timestamp in YYYY-MM-DD [HH:MM] format
+     * Get a timestamp in YYYY-MM-DD [HH:MM:SS] format.
+     * @returns Timestamp in YYYY-MM-DD [HH:MM:SS] format
      */
-    currentTimestamp() {
+    timestamp() {
         const time = new Date();
         let month = time.getMonth().toString();
         let day = time.getDate().toString();
         let hour = time.getHours().toString();
         let minute = time.getMinutes().toString();
+        let second = time.getSeconds().toString();
         if(month.length == 1) month = 0 + month;
         if(day.length == 1) day = 0 + day;
         if(hour.length == 1) hour = 0 + hour;
         if(minute.length == 1) minute = 0 + minute;
-        return `${time.getFullYear()}-${month}-${day} [${hour}:${minute}]`;
+        if(second.length == 1) second = 0 + second;
+        return `${time.getFullYear()}-${month}-${day} [${hour}:${minute}:${second}]`;
     }
     /**
      * Append a debug-level entry to the log.
      * @param {string} text Text
      */
     log(text) {
-        let prefix = `${this.currentTimestamp()}   LOG | `;
+        let prefix = `${this.timestamp()}   LOG | `;
         fs.appendFile(this.#file, `${prefix}${text.toString().replaceAll('\n', `\n${prefix}`)}\n`, {encoding: 'utf-8'}, (err) => {if (err) console.error(err)});
     }
     /**
@@ -52,7 +55,7 @@ class Logger {
      * @param {string} text Text
      */
     warn(text) {
-        let prefix = `${this.currentTimestamp()}  WARN | `;
+        let prefix = `${this.timestamp()}  WARN | `;
         fs.appendFile(this.#file, `${prefix}${text.toString().replaceAll('\n', `\n${prefix}`)}\n`, {encoding: 'utf-8'}, (err) => {if (err) console.error(err)});
     }
     /**
@@ -60,7 +63,7 @@ class Logger {
      * @param {string} text Text
      */
     error(text) {
-        let prefix = `${this.currentTimestamp()} ERROR | `;
+        let prefix = `${this.timestamp()} ERROR | `;
         fs.appendFile(this.#file, `${prefix}${text.toString().replaceAll('\n', `\n${prefix}`)}\n`, {encoding: 'utf-8'}, (err) => {if (err) console.error(err)});
     }
 
@@ -68,6 +71,8 @@ class Logger {
      * Safely closes the logging session.
      */
     destroy() {
+        console.log('Logger instance destroyed');
+        this.log('Logger instance destroyed');
         fs.closeSync(this.#file);
     }
 }
