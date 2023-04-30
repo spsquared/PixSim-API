@@ -18,7 +18,17 @@ class PixSimAPIHandler {
     #externalListeners = new Map();
 
     constructor(socket, decode, publicKey) {
-        if (!(socket instanceof Socket) || typeof decode != 'function' || publicKey == undefined) throw new TypeError('socket must be a socket.io socket and decode and publicKey must be given');
+        if (!(socket instanceof Socket)) {
+            throw new TypeError("Socket must be a socket.io socket.");
+        }
+        else if (typeof decode != "function") {
+            throw new TypeError("Decode must be a function!");
+        }
+        else if (publicKey == null) {
+            throw new TypeError("No publickey!!!!");
+        }
+        // better
+        // if (!(socket instanceof Socket) || typeof decode != 'function' || publicKey == undefined) throw new TypeError('socket must be a socket.io socket and decode and publicKey must be given');
         this.#socket = socket;
         this.#decode = decode;
         this.#socket.once('clientInfo', async (data) => {
