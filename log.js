@@ -6,7 +6,13 @@ const fs = require('fs');
 class Logger {
     #file;
 
-    constructor(path) {
+    /**
+     * Create a new Logger in a specified directory. Creating a Logger will also create a `logs/` directory
+     * if there already exists a log.log in the directory, moving it in. This means creating multiple
+     * Loggers in the same directory will break them.
+     * @param {string} path filepath to the log directory. The default is `'./'`.
+     */
+    constructor(path = './') {
         if (typeof path != 'string') throw new TypeError('file path must be a string');
         try {
             let filePath = path + 'log.log';
@@ -26,7 +32,7 @@ class Logger {
 
     /**
      * Get a timestamp in YYYY-MM-DD [HH:MM:SS] format.
-     * @returns Timestamp in YYYY-MM-DD [HH:MM:SS] format
+     * @returns Timestamp in YYYY-MM-DD [HH:MM:SS] format.
      */
     timestamp() {
         const time = new Date();
