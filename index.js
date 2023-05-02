@@ -124,13 +124,22 @@ class PixSimAPI {
         process.on('uncaughtException', (err) => {
             this.#logger.error(err.stack);
             console.error(err);
+            this.close();
             this.#active = false;
         });
         process.on('unhandledRejection', (err) => {
             this.#logger.error(err.stack);
             console.error(err);
+            this.close();
             this.#active = false;
         });
+    }
+
+    /**
+     * If the API is accepting requests.
+     */
+    get active() {
+        return this.#active;
     }
 
     /**
@@ -176,6 +185,8 @@ class PixSimAPI {
      * Disconnects the API
      */
     close() {
+        if (!this.#active) return;
+        this.#active = false;
         PixSimHandler.destroyAll();
         this.#io.close();
         this.#logger.destroy();
