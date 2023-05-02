@@ -54,6 +54,7 @@ class Logger {
      * @param {string} text Text.
      */
     log(text) {
+        if (this.#file == undefined) return;
         let prefix = `${this.timestamp()}   LOG | `;
         fs.appendFile(this.#file, `${prefix}${text.toString().replaceAll('\n', `\n${prefix}`)}\n`, { encoding: 'utf-8' }, (err) => { if (err) console.error(err) });
     }
@@ -62,6 +63,7 @@ class Logger {
      * @param {string} text Text.
      */
     warn(text) {
+        if (this.#file == undefined) return;
         let prefix = `${this.timestamp()}  WARN | `;
         fs.appendFile(this.#file, `${prefix}${text.toString().replaceAll('\n', `\n${prefix}`)}\n`, { encoding: 'utf-8' }, (err) => { if (err) console.error(err) });
     }
@@ -70,6 +72,7 @@ class Logger {
      * @param {string} text Text.
      */
     error(text) {
+        if (this.#file == undefined) return;
         let prefix = `${this.timestamp()} ERROR | `;
         fs.appendFile(this.#file, `${prefix}${text.toString().replaceAll('\n', `\n${prefix}`)}\n`, { encoding: 'utf-8' }, (err) => { if (err) console.error(err) });
     }
@@ -78,9 +81,11 @@ class Logger {
      * Safely closes the logging session.
      */
     destroy() {
+        if (this.#file == undefined) return;
         console.log('Logger instance destroyed');
         this.log('Logger instance destroyed');
         fs.closeSync(this.#file);
+        this.#file = undefined;
     }
 }
 

@@ -37,7 +37,7 @@ class JSLoader {
         try {
             let cacheFileName = cacheDir + url.substring(8).replace(/[\\/:*?<>|]/ig, '-');
             let load = (script) => {
-                this.#worker = new Worker(`const{parentPort}=require('worker_threads');const window={addEventListener:()=>{},removeEventListener:()=>{},alert:()=>{},prompt:()=>{},confirm:()=>{},location:{replace:()=>{}},open:()=>{},localStorage:{getItem:()=>{return null;},setItem:()=>{},deleteItem:()=>{}}};const document={addEventListener:()=>{},removeEventListener:()=>{},write:()=>{}};${script};parentPort.on('message',(v)=>{try{parentPort.postMessage(new Function(v)());}catch(err){parentPort.postMessage(err.message+a.stack);}});setInterval(()=>{},10000);`, { eval: true });
+                this.#worker = new Worker(`const{parentPort}=require('worker_threads');const window={addEventListener:()=>{},removeEventListener:()=>{},alert:()=>{},prompt:()=>{},confirm:()=>{},location:{replace:()=>{}},open:()=>{},localStorage:{getItem:()=>{return null;},setItem:()=>{},deleteItem:()=>{}}};const document={addEventListener:()=>{},removeEventListener:()=>{},write:()=>{}};const console={log:()=>{},warn:()=>{},error:()=>{},table:()=>{}};let a=true;${script};parentPort.on('message',(v)=>{try{parentPort.postMessage(new Function(v)());}catch(err){parentPort.postMessage(err.message+err.stack);}});setInterval(()=>{},10000);`, { eval: true });
                 this.#running = true;
                 readyResolve();
             };
