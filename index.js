@@ -14,6 +14,7 @@ class PixSimAPI {
     #io = null;
     #gridAdapter = null;
     #active = false;
+    #crashed = false;
 
     /**
      * Open a PixSim API.
@@ -36,6 +37,7 @@ class PixSimAPI {
             await this.#gridAdapter.ready;
             resolve();
         }).then(() => {
+            if (this.#crashed) return;
             this.#io = new SocketIO(server, {
                 path: path,
                 cors: {
@@ -46,7 +48,7 @@ class PixSimAPI {
                 upgradeTimeout: 300000
             });
             // unfortunately, there is a giant monolith of code in the constructor, and all the
-            // lasses are in this single file because of circular dependencies, hooray for jank!
+            // classes are in this single file because of circular dependencies, hooray for jank!
             const recentConnections = [];
             const recentConnectionKicks = [];
             this.#io.on('connection', async (socket) => {
@@ -121,18 +123,16 @@ class PixSimAPI {
         });
 
         // error logs
-        process.on('uncaughtException', (err) => {
+        let handleCrash = (err) => {
             this.#logger.error(err.stack);
             console.error(err);
+            this.#crashed = true;
+            process.off('uncaughtException', handleCrash);
+            process.off('unhandledRejection', handleCrash);
             this.close();
-            this.#active = false;
-        });
-        process.on('unhandledRejection', (err) => {
-            this.#logger.error(err.stack);
-            console.error(err);
-            this.close();
-            this.#active = false;
-        });
+        };
+        process.on('uncaughtException', handleCrash);
+        process.on('unhandledRejection', handleCrash);
     }
 
     /**
@@ -185,10 +185,10 @@ class PixSimAPI {
      * Disconnects the API
      */
     close() {
-        if (!this.#active) return;
+        if (!this.#active && !this.#crashed) return;
         this.#active = false;
         PixSimHandler.destroyAll();
-        this.#io.close();
+        if (this.#io) this.#io.close();
         this.#logger.destroy();
     }
 }
