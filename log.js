@@ -7,13 +7,14 @@ class Logger {
     #file;
 
     /**
-     * Create a new Logger in a specified directory. Creating a Logger will also create a `logs/` directory
+     * Create a new `Logger` in a specified directory. Creating a `Logger` will also create a `logs/` directory
      * if there already exists a log.log in the directory, moving it in. This means creating multiple
-     * Loggers in the same directory will break them.
-     * @param {string} path filepath to the log directory. The default is `'./'`.
+     * `Loggers` in the same directory will break them.
+     * @param {string} path Filepath to the log directory. The default is `'./'`.
      */
     constructor(path = './') {
-        if (typeof path != 'string') throw new TypeError('file path must be a string');
+        if (typeof path != 'string') throw new TypeError('path must be a string');
+        if (path.length == 0 || path[path.length - 1] != '/') throw new Error('path must be a valid directory');
         try {
             let filePath = path + 'log.log';
             if (fs.existsSync(filePath)) {
@@ -50,7 +51,7 @@ class Logger {
     }
     /**
      * Append a debug-level entry to the log.
-     * @param {string} text Text
+     * @param {string} text Text.
      */
     log(text) {
         let prefix = `${this.timestamp()}   LOG | `;
@@ -58,7 +59,7 @@ class Logger {
     }
     /**
      * Append a warning-level entry to the log.
-     * @param {string} text Text
+     * @param {string} text Text.
      */
     warn(text) {
         let prefix = `${this.timestamp()}  WARN | `;
@@ -66,7 +67,7 @@ class Logger {
     }
     /**
      * Append an error-level entry to the log.
-     * @param {string} text Text
+     * @param {string} text Text.
      */
     error(text) {
         let prefix = `${this.timestamp()} ERROR | `;

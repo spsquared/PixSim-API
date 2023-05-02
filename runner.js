@@ -37,7 +37,3 @@ process.on('SIGTERM', stop);
 process.on('SIGINT', stop);
 process.on('SIGQUIT', stop);
 process.on('SIGILL', stop);
-
-async function RSAdecode(buf) {
-
-};

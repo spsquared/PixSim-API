@@ -2,6 +2,7 @@ const { Server } = require('http');
 const { webcrypto, randomBytes } = require('crypto');
 const { Server: SocketIO, Socket } = require('socket.io');
 const Logger = require('./log');
+const PixSimGridAdapter = require('./adapter');
 
 /**
  * A full API opening on an HTTP server utilizing Socket.IO.
@@ -11,16 +12,18 @@ class PixSimAPI {
     #logger = null;
     #keys = null;
     #io = null;
+    #gridAdapter = null;
 
     /**
      * Open a PixSim API.
-     * @param {Server} server An HTTP server.
+     * @param {Server} server An HTTP `Server`.
      * @param {string} path Path to open the API onto.
      * @param {string} logPath Directory for logging.
      */
-    constructor(server, path = '/pixsim-api/', logPath = './') {
+    constructor(server, { path = '/pixsim-api/', logPath = './' } = {}) {
         if (!(server instanceof Server)) throw new TypeError('server must be an HTTP server');
         this.#logger = new Logger(logPath);
+        this.#gridAdapter = new PixSimGridAdapter(this.#logger);
         new Promise(async (resolve, reject) => {
             this.#keys = await webcrypto.subtle.generateKey({
                 name: "RSA-OAEP",
@@ -125,9 +128,9 @@ class PixSimAPI {
 
     /**
      * Decode an RSA encoded message using the private key.
-     * @param {Buffer} buf Buffer resulting from encoding a message using the RSA-OAEP public key.
+     * @param {Buffer} buf `Buffer` resulting from encoding a message using the RSA-OAEP public key.
      * @returns {string} Decoded message.
-     * @throws A TypeError when decoding fails.
+     * @throws A `TypeError` when decoding fails.
      */
     async decode(buf) {
         return new TextDecoder().decode(await webcrypto.subtle.decrypt({ name: "RSA-OAEP" }, this.#keys.privateKey, buf));
@@ -137,6 +140,13 @@ class PixSimAPI {
      */
     get publicKey() {
         return webcrypto.subtle.exportKey('jwk', this.#keys.publicKey);
+    }
+
+    /**
+     * The instance of `PixSimGridAdapter`
+     */
+    get gridAdapter() {
+        return this.#gridAdapter;
     }
 
     set logEverything(bool) {
@@ -149,7 +159,7 @@ class PixSimAPI {
         return this.#loggerLogsEverything;
     }
     /**
-     * The Logger instance used for logging.
+     * The `Logger` instance used for logging.
      */
     get logger() {
         return this.#logger;
@@ -180,9 +190,9 @@ class PixSimHandler {
     #externalListeners = new Map();
 
     /**
-     * Create a PixSimHandler from a Socket.IO socket and parent PixSimAPI.
-     * @param {Socket} socket Socket.IO socket to use as connection.
-     * @param {PixSimAPI} api Parent PixSimAPI instance.
+     * Create a PixSimHandler from a Socket.IO `Socket` and parent `PixSimAPI`.
+     * @param {Socket} socket Socket.IO `Socket` to use as connection.
+     * @param {PixSimAPI} api Parent `PixSimAPI` instance.
      */
     constructor(socket, api) {
         if (!(socket instanceof Socket)) throw new TypeError('socket must be a socket.io socket');
@@ -354,7 +364,7 @@ class PixSimHandler {
         return this.#api.logEverything;
     }
     /**
-     * The Logger instance used for logging.
+     * The `Logger` instance used for logging.
      */
     get logger() {
         return this.#api.logger;
@@ -402,11 +412,11 @@ class Room {
     #bannedPlayers = [];
 
     /**
-     * Create a Room from a PixSimHandler host.
-     * @param {PixSimHandler} handler Handler instance to use as game host.
+     * Create a `Room` from a `PixSimHandler` host.
+     * @param {PixSimHandler} handler `PixSimHandler` instance to use as game host.
      */
     constructor(handler) {
-        if (!(handler instanceof PixSimHandler)) throw new Error('handler must be a PixSimHandler');
+        if (!(handler instanceof PixSimHandler)) throw new TypeError('handler must be a PixSimHandler');
         this.#host = handler;
         this.#id = randomBytes(4).toString('hex').toUpperCase();
         this.#host.logger.log(`${handler.debugId} created game ${this.#id}`);
@@ -424,10 +434,10 @@ class Room {
     }
 
     /**
-     * Adds a PixSimHandler to the room. The handler is placed in the spectator list if `spectating`
+     * Adds a `PixSimHandler` to the room. The handler is placed in the spectator list if `spectating`
      * is true. Otherwise it will place it in the team with the lower player count. If both teams are
      * full the handler will be placed as a spectator regardless of `spectating`.
-     * @param {PixSimHandler} handler PixSimHandler to add to the room.
+     * @param {PixSimHandler} handler `PixSimHandler` to add to the room.
      * @param {boolean} spectating Whether to join as a spectator or not.
      */
     join(handler, spectating = false) {
@@ -456,9 +466,9 @@ class Room {
         }
     }
     /**
-     * Moves a PixSimHandler to a different team within the room. If the handler is not within the game
+     * Moves a `PixSimHandler` to a different team within the room. If the handler is not within the game
      * or the team it moves to is full then the change is not made.
-     * @param {PixSimHandler} handler PixSimHandler to move.
+     * @param {PixSimHandler} handler `PixSimHandler` to move.
      * @param {number} team Team to move to (0 is spectator, 1 is team A, 2 is team B).
      */
     changeTeam(handler, team) {
@@ -484,8 +494,8 @@ class Room {
         this.#updateTeamLists();
     }
     /**
-     * Removes a PixSimHandler from the room.
-     * @param {PixSimHandler} handler Handler to remove from the room.
+     * Removes a `PixSimHandler` from the room.
+     * @param {PixSimHandler} handler `PixSimHandler` to remove from the room.
      */
     leave(handler) {
         if (!(handler instanceof PixSimHandler)) return;
@@ -667,7 +677,7 @@ class Room {
     /**
      * Gets a list of all open public games, considering whether spectators are on or not.
      * @param {boolean} spectating Only show rooms with spectators on.
-     * @returns An array of Rooms.
+     * @returns An array of `Room`s.
      */
     static publicRooms(spectating) {
         const ret = [];

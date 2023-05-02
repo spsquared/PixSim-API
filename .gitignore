@@ -5,6 +5,9 @@ node_modules/
 logs/
 *.log
 
+# cached scripts
+filecache/
+
 # replit files (replit wants to make initial commits everywhere because of these)
 .replit
 replit.nix
