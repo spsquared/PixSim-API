@@ -24,6 +24,7 @@ class PixSimAPI {
         if (!(server instanceof Server)) throw new TypeError('server must be an HTTP server');
         this.#logger = new Logger(logPath);
         this.#gridAdapter = new PixSimGridAdapter(this.#logger);
+        // wait for keys and grid adapter to finish loading, then open the server
         new Promise(async (resolve, reject) => {
             this.#keys = await webcrypto.subtle.generateKey({
                 name: "RSA-OAEP",
@@ -31,89 +32,91 @@ class PixSimAPI {
                 publicExponent: new Uint8Array([1, 0, 1]),
                 hash: "SHA-256"
             }, false, ['encrypt', 'decrypt']);
+            await this.#gridAdapter.ready;
             resolve();
-        });
-        this.#io = new SocketIO(server, {
-            path: path,
-            cors: {
-                origin: '*',
-                methods: ['GET', 'POST']
-            },
-            pingTimeout: 10000,
-            upgradeTimeout: 300000
-        });
-        // unfortunately, there is a giant monolith of code in the constructor, and all the
-        // lasses are in this single file because of circular dependencies, hooray for jank!
-        const recentConnections = [];
-        const recentConnectionKicks = [];
-        this.#io.on('connection', async (socket) => {
-            // connection DOS detection
-            const ip = socket.handshake.headers['x-forwarded-for'] ?? socket.handshake.address ?? socket.request.socket.remoteAddress ?? 'unknown';
-            recentConnections[ip] = (recentConnections[ip] ?? 0) + 1;
-            if (recentConnections[ip] > 3) {
-                if (!recentConnectionKicks[ip]) {
-                    log(ip + ' was kicked for connection spam.');
-                    this.logger.warn(`Potential DOS attack from ${ip}!`);
-                }
-                recentConnectionKicks[ip] = true;
-                socket.emit('disconnection: ' + ip);
-                socket.removeAllListeners();
-                socket.onevent = function (packet) { };
-                socket.disconnect();
-                return;
-            }
-            console.log('connection: ' + ip);
-
-            // create handler
-            const handler = new PixSimHandler(socket, this);
-
-            // manage disconnections
-            function handleDisconnect(reason) {
-                console.log('disconnection: ' + ip);
-                handler.destroy(reason);
-                clearInterval(timeoutcheck);
-                clearInterval(packetcheck);
-            };
-            socket.on('disconnect', handleDisconnect);
-            socket.on('timeout', handleDisconnect);
-            socket.on('error', handleDisconnect);
-
-            // timeout
-            let timeout = 0;
-            const timeoutcheck = setInterval(() => {
-                timeout++;
-                if (timeout > 300) handleDisconnect();
-            }, 1000);
-
-            // performance metrics
-            socket.on('ping', () => {
-                socket.emit('pong');
+        }).then(() => {
+            this.#io = new SocketIO(server, {
+                path: path,
+                cors: {
+                    origin: '*',
+                    methods: ['GET', 'POST']
+                },
+                pingTimeout: 10000,
+                upgradeTimeout: 300000
             });
-
-            // socketio dos protection
-            let packetCount = 0;
-            const onevent = socket.onevent;
-            socket.onevent = (packet) => {
-                if (packet.data[0] == null) {
-                    handleDisconnect('invalid packet');
+            // unfortunately, there is a giant monolith of code in the constructor, and all the
+            // lasses are in this single file because of circular dependencies, hooray for jank!
+            const recentConnections = [];
+            const recentConnectionKicks = [];
+            this.#io.on('connection', async (socket) => {
+                // connection DOS detection
+                const ip = socket.handshake.headers['x-forwarded-for'] ?? socket.handshake.address ?? socket.request.socket.remoteAddress ?? 'unknown';
+                recentConnections[ip] = (recentConnections[ip] ?? 0) + 1;
+                if (recentConnections[ip] > 3) {
+                    if (!recentConnectionKicks[ip]) {
+                        log(ip + ' was kicked for connection spam.');
+                        this.logger.warn(`Potential DOS attack from ${ip}!`);
+                    }
+                    recentConnectionKicks[ip] = true;
+                    socket.emit('disconnection: ' + ip);
+                    socket.removeAllListeners();
+                    socket.onevent = function (packet) { };
+                    socket.disconnect();
                     return;
                 }
-                onevent.call(socket, packet);
-                timeout = 0;
-                packetCount++;
-            };
-            const packetcheck = setInterval(() => {
-                packetCount = Math.max(packetCount - 250, 0);
-                if (packetCount > 0) {
-                    this.logger.warn(`Potential DOS attack from ${handler.debugId}!`);
-                    handleDisconnect('socketio spam');
-                }
+                console.log('connection: ' + ip);
+    
+                // create handler
+                const handler = new PixSimHandler(socket, this);
+    
+                // manage disconnections
+                function handleDisconnect(reason) {
+                    console.log('disconnection: ' + ip);
+                    handler.destroy(reason);
+                    clearInterval(timeoutcheck);
+                    clearInterval(packetcheck);
+                };
+                socket.on('disconnect', handleDisconnect);
+                socket.on('timeout', handleDisconnect);
+                socket.on('error', handleDisconnect);
+    
+                // timeout
+                let timeout = 0;
+                const timeoutcheck = setInterval(() => {
+                    timeout++;
+                    if (timeout > 300) handleDisconnect();
+                }, 1000);
+    
+                // performance metrics
+                socket.on('ping', () => {
+                    socket.emit('pong');
+                });
+    
+                // socketio dos protection
+                let packetCount = 0;
+                const onevent = socket.onevent;
+                socket.onevent = (packet) => {
+                    if (packet.data[0] == null) {
+                        handleDisconnect('invalid packet');
+                        return;
+                    }
+                    onevent.call(socket, packet);
+                    timeout = 0;
+                    packetCount++;
+                };
+                const packetcheck = setInterval(() => {
+                    packetCount = Math.max(packetCount - 250, 0);
+                    if (packetCount > 0) {
+                        this.logger.warn(`Potential DOS attack from ${handler.debugId}!`);
+                        handleDisconnect('socketio spam');
+                    }
+                }, 1000);
+            });
+            setInterval(() => {
+                for (let i in recentConnections) recentConnections[i] = Math.max(recentConnections[i] - 1, 0);
+                for (let i in recentConnectionKicks) delete recentConnectionKicks[i];
             }, 1000);
         });
-        setInterval(() => {
-            for (let i in recentConnections) recentConnections[i] = Math.max(recentConnections[i] - 1, 0);
-            for (let i in recentConnectionKicks) delete recentConnectionKicks[i];
-        }, 1000);
 
         // error logs
         process.on('uncaughtException', (err) => {
@@ -186,6 +189,7 @@ class PixSimHandler {
     #currentRoom = null;
     #ip = '';
     #username = 'Unknown';
+    #clientType = '';
     #lastCreateGame = 0;
     #externalListeners = new Map();
 
@@ -200,10 +204,11 @@ class PixSimHandler {
         this.#socket = socket;
         this.#api = api;
         this.#socket.once('clientInfo', async (data) => {
-            if (typeof data != 'object' || data === null) socket.disconnect();
-            if (data.gameType != 'rps' && data.gameType != 'bps') socket.disconnect();
+            if (typeof data != 'object' || data === null) this.destroy('Invalid connection handshake data');
+            if (data.client != 'rps' && data.client != 'bps') this.destroy('Invalid connection handshake data');
             this.#ip = socket.handshake.headers['x-forwarded-for'] ?? socket.handshake.address ?? '127.0.0.1';
             this.#username = data.username;
+            this.#clientType = data.client;
             if (this.#api.logEverything) this.#api.logger.log(`Connection: ${this.debugId}`);
             // verify password
             try {
@@ -351,12 +356,24 @@ class PixSimHandler {
         return this.#username;
     }
     /**
+     * The game client of the player (currently, only "rps" and "bps" are accepted).
+     */
+    get clientType() {
+        return this.#clientType;
+    }
+    /**
      * The debug id of the player (username and ip).
      */
     get debugId() {
         return `${this.#username} (${this.#ip})`;
     }
 
+    /**
+     * The parent `PixSimAPI` instance.
+     */
+    get api() {
+        return this.#api;
+    }
     /**
      * Whether to log everything that happens.
      */
@@ -398,6 +415,7 @@ class PixSimHandler {
  */
 class Room {
     static #list = new Set();
+    #api;
     #id = '';
     #type = 'pixelcrash';
     #gameModeHandler = null;
@@ -418,6 +436,7 @@ class Room {
     constructor(handler) {
         if (!(handler instanceof PixSimHandler)) throw new TypeError('handler must be a PixSimHandler');
         this.#host = handler;
+        this.#api = this.#host.api;
         this.#id = randomBytes(4).toString('hex').toUpperCase();
         this.#host.logger.log(`${handler.debugId} created game ${this.#id}`);
         Room.#list.add(this);
@@ -429,7 +448,7 @@ class Room {
         this.#host.addExternalListener(this.#id, 'teamSize', (size) => this.teamSize = size);
         this.#host.addExternalListener(this.#id, 'kickPlayer', (username) => this.kick(username));
         this.#host.addExternalListener(this.#id, 'movePlayer', (data) => this.move(data.username, data.team));
-        this.#host.addExternalListener(this.#id, 'startGame', () => this.#start());
+        this.#host.addExternalListener(this.#id, 'startGame', () => this.start());
         this.#host.send('gameCode', this.#id);
     }
 
@@ -537,17 +556,10 @@ class Room {
             handler.leaveGame();
         }
     }
-    #updateTeamLists() {
-        const teams = {
-            teamA: Array.from(this.#teamA).map(handler => handler.username),
-            teamB: Array.from(this.#teamB).map(handler => handler.username),
-            spectators: Array.from(this.#spectators).map(handler => handler.username),
-            teamSize: this.#teamSize
-        };
-        this.#host.send('updateTeamLists', teams);
-        this.#host.sendToGameRoom('updateTeamLists', teams);
-    }
-    #start() {
+    /**
+     * Starts the game. This is usually invoked by the handler itself.
+     */
+    start() {
         if (this.#teamA.size == this.#teamSize && this.#teamB.size == this.#teamSize && this.#open) {
             this.#host.logger.log(`Game ${this.#id} started`);
             this.#open = false;
@@ -569,6 +581,16 @@ class Room {
             });
         }
     }
+    #updateTeamLists() {
+        const teams = {
+            teamA: Array.from(this.#teamA).map(handler => handler.username),
+            teamB: Array.from(this.#teamB).map(handler => handler.username),
+            spectators: Array.from(this.#spectators).map(handler => handler.username),
+            teamSize: this.#teamSize
+        };
+        this.#host.send('updateTeamLists', teams);
+        this.#host.sendToGameRoom('updateTeamLists', teams);
+    }
     #handleGridSize(size) {
         if (typeof size != 'object' || typeof size.width != 'number' || typeof size.height != 'number') {
             console.warn(`${this.#host.debugId} kicked for sending invalid grid size`);
@@ -581,7 +603,26 @@ class Room {
             console.warn(`${this.#host.debugId} kicked for sending invalid game tick data`);
             this.#host.destroy('Invalid game tick data', true);
         }
-        this.#host.sendToGameRoom('tick', tick);
+        let redGrid = this.#host.clientType == 'rps' ? tick.grid : undefined;
+        let blueGrid = this.#host.clientType == 'bps' ? tick.grid : undefined;
+        this.#forEachHandler((handler) => {
+            if (handler.clientType == 'rps') {
+                if (redGrid == undefined) {
+                    redGrid = this.#api.gridAdapter
+                }
+            } else {
+            }
+        });
+    }
+
+    /**
+     * Executes a callback function on every `Handler` in the `Room`. Includes both teams and the spectators.
+     * @param {function} cb Callback function.
+     */
+    #forEachHandler(cb) {
+        this.#teamA.forEach(cb);
+        this.#teamB.forEach(cb);
+        this.#spectators.forEach(cb);
     }
 
     set gameType(type) {
@@ -611,6 +652,12 @@ class Room {
         }
     }
 
+    /**
+     * Parent `PixSimAPI` instance;
+     */
+    get api() {
+        return this.#api;
+    }
     /**
      * The ID, which is also the game code.
      */
@@ -659,18 +706,10 @@ class Room {
      */
     destroy() {
         this.#host.logger.log(`game ${this.#id} closed`);
-        for (const handler of this.#teamA) {
+        this.#forEachHandler((handler) => {
             handler.send('gameEnd');
             handler.leaveGame();
-        }
-        for (const handler of this.#teamB) {
-            handler.send('gameEnd');
-            handler.leaveGame(this.#id);
-        }
-        for (const handler of this.#spectators) {
-            handler.send('gameEnd');
-            handler.leaveGame(this.#id);
-        }
+        });
         Room.#list.delete(this);
     }
 
