@@ -19,7 +19,7 @@ app.use(cors({
 }));
 app.use(limiter);
 
-app.get('/', (req, res) => res.send({ active: true, time: Date.now() }));
+app.get('/', (req, res) => res.send({ active: api.active, time: Date.now() }));
 
 if (process.env.PORT) {
     server.listen(process.env.PORT);

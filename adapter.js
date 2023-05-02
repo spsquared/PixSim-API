@@ -13,7 +13,7 @@ class PixSimGridAdapter {
      */
     constructor(logger) {
         const redpixelLoader = new JSLoader('https://raw.githubusercontent.com/definitely-nobody-is-here/red-pixel-simulator/master/pixels.js', {
-            fallback: 'https://red.pixelsimulator.repl.co/index.js', 
+            fallback: 'https://red.pixelsimulator.repl.co/index.js',
             logger: logger
         });
         const bluepixelLoader = new JSLoader('https://blue-pixel-simulator.maitiansha1.repl.co/pixelSetup.js', {

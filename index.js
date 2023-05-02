@@ -13,6 +13,7 @@ class PixSimAPI {
     #keys = null;
     #io = null;
     #gridAdapter = null;
+    #active = false;
 
     /**
      * Open a PixSim API.
@@ -65,10 +66,10 @@ class PixSimAPI {
                     return;
                 }
                 console.log('connection: ' + ip);
-    
+
                 // create handler
                 const handler = new PixSimHandler(socket, this);
-    
+
                 // manage disconnections
                 function handleDisconnect(reason) {
                     console.log('disconnection: ' + ip);
@@ -79,19 +80,19 @@ class PixSimAPI {
                 socket.on('disconnect', handleDisconnect);
                 socket.on('timeout', handleDisconnect);
                 socket.on('error', handleDisconnect);
-    
+
                 // timeout
                 let timeout = 0;
                 const timeoutcheck = setInterval(() => {
                     timeout++;
                     if (timeout > 300) handleDisconnect();
                 }, 1000);
-    
+
                 // performance metrics
                 socket.on('ping', () => {
                     socket.emit('pong');
                 });
-    
+
                 // socketio dos protection
                 let packetCount = 0;
                 const onevent = socket.onevent;
@@ -116,16 +117,19 @@ class PixSimAPI {
                 for (let i in recentConnections) recentConnections[i] = Math.max(recentConnections[i] - 1, 0);
                 for (let i in recentConnectionKicks) delete recentConnectionKicks[i];
             }, 1000);
+            this.#active = true;
         });
 
         // error logs
         process.on('uncaughtException', (err) => {
             this.#logger.error(err.stack);
             console.error(err);
+            this.#active = false;
         });
         process.on('unhandledRejection', (err) => {
             this.#logger.error(err.stack);
             console.error(err);
+            this.#active = false;
         });
     }
 

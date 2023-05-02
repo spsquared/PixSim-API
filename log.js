@@ -42,11 +42,11 @@ class Logger {
         let hour = time.getHours().toString();
         let minute = time.getMinutes().toString();
         let second = time.getSeconds().toString();
-        if(month.length == 1) month = 0 + month;
-        if(day.length == 1) day = 0 + day;
-        if(hour.length == 1) hour = 0 + hour;
-        if(minute.length == 1) minute = 0 + minute;
-        if(second.length == 1) second = 0 + second;
+        if (month.length == 1) month = 0 + month;
+        if (day.length == 1) day = 0 + day;
+        if (hour.length == 1) hour = 0 + hour;
+        if (minute.length == 1) minute = 0 + minute;
+        if (second.length == 1) second = 0 + second;
         return `${time.getFullYear()}-${month}-${day} [${hour}:${minute}:${second}]`;
     }
     /**
@@ -55,7 +55,7 @@ class Logger {
      */
     log(text) {
         let prefix = `${this.timestamp()}   LOG | `;
-        fs.appendFile(this.#file, `${prefix}${text.toString().replaceAll('\n', `\n${prefix}`)}\n`, {encoding: 'utf-8'}, (err) => {if (err) console.error(err)});
+        fs.appendFile(this.#file, `${prefix}${text.toString().replaceAll('\n', `\n${prefix}`)}\n`, { encoding: 'utf-8' }, (err) => { if (err) console.error(err) });
     }
     /**
      * Append a warning-level entry to the log.
@@ -63,7 +63,7 @@ class Logger {
      */
     warn(text) {
         let prefix = `${this.timestamp()}  WARN | `;
-        fs.appendFile(this.#file, `${prefix}${text.toString().replaceAll('\n', `\n${prefix}`)}\n`, {encoding: 'utf-8'}, (err) => {if (err) console.error(err)});
+        fs.appendFile(this.#file, `${prefix}${text.toString().replaceAll('\n', `\n${prefix}`)}\n`, { encoding: 'utf-8' }, (err) => { if (err) console.error(err) });
     }
     /**
      * Append an error-level entry to the log.
@@ -71,7 +71,7 @@ class Logger {
      */
     error(text) {
         let prefix = `${this.timestamp()} ERROR | `;
-        fs.appendFile(this.#file, `${prefix}${text.toString().replaceAll('\n', `\n${prefix}`)}\n`, {encoding: 'utf-8'}, (err) => {if (err) console.error(err)});
+        fs.appendFile(this.#file, `${prefix}${text.toString().replaceAll('\n', `\n${prefix}`)}\n`, { encoding: 'utf-8' }, (err) => { if (err) console.error(err) });
     }
 
     /**
