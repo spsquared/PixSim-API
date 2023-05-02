@@ -2,7 +2,7 @@
   "name": "pixsim-api",
   "version": "1.0.0",
   "description": "PixSim-API for cross-game playing",
-  "main": "main.js",
+  "main": "runner.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
