@@ -266,7 +266,7 @@ class PixSimHandler {
         this.#socket.once('cancelCreateGame', () => this.leaveGame());
     }
     #getPublicRooms(data) {
-        if (typeof data != 'object') return;
+        if (typeof data != 'object' || data == null) return;
         if (this.#api.logEverything) this.#api.logger.info(`${this.debugId} requested list of public games`);
         const rooms = Room.publicRooms(data.spectating);
         const games = [];
@@ -283,7 +283,7 @@ class PixSimHandler {
         this.send('publicRooms', games);
     }
     #joinGame(data) {
-        if (typeof data != 'object' || this.#currentRoom != null) return;
+        if (typeof data != 'object' || data == null || this.#currentRoom != null) return;
         if (this.#api.logEverything) this.#api.logger.info(`${this.debugId} attempted to join game ${data.code}`);
         const rooms = Room.publicRooms(data.spectating);
         for (const room of rooms) {
@@ -615,16 +615,18 @@ class Room {
         this.#host.sendToGameRoom('updateTeamLists', teams);
     }
     #handleGridSize(size) {
-        if (typeof size != 'object' || typeof size.width != 'number' || typeof size.height != 'number') {
+        if (typeof size != 'object' || size == null || typeof size.width != 'number' || typeof size.height != 'number') {
             console.warn(`${this.#host.debugId} kicked for sending invalid grid size`);
             this.#host.destroy('Invalid grid size', true);
+            return;
         }
         this.#host.sendToGameRoom('gridSize', { width: size.width, height: size.height });
     }
     #handleTick(tick) {
-        if (typeof tick != 'object' || !Buffer.isBuffer(tick.grid) || tick.grid.length % 2 != 0 || typeof tick.origin != 'string') {
+        if (typeof tick != 'object' || tick == null || !Buffer.isBuffer(tick.grid) || tick.grid.length % 2 != 0 || typeof tick.origin != 'string') {
             console.warn(`${this.#host.debugId} kicked for sending invalid game tick data`);
             this.#host.destroy('Invalid game tick data', true);
+            return;
         }
         let newGridCache = new Map();
         newGridCache.set(this.#host.clientType, tick.grid);
