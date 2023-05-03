@@ -33,18 +33,20 @@ class JSLoader {
         if (cacheDir.length == 0 || cacheDir[cacheDir.length - 1] != '/') throw new Error('cacheDir must be a valid directory');
         if (logger instanceof Logger) this.#logger = logger;
         let readyResolve;
+        let loadStart = performance.now();
         this.#ready = new Promise((resolve, reject) => readyResolve = resolve);
         try {
             let cacheFileName = cacheDir + url.substring(8).replace(/[\\/:*?<>|]/ig, '-');
             let load = (script) => {
-                this.#worker = new Worker(`const{parentPort}=require('worker_threads');const window={addEventListener:()=>{},removeEventListener:()=>{},alert:()=>{},prompt:()=>{},confirm:()=>{},location:{replace:()=>{}},open:()=>{},localStorage:{getItem:()=>{return null;},setItem:()=>{},deleteItem:()=>{}}};const document={addEventListener:()=>{},removeEventListener:()=>{},write:()=>{}};const console={log:()=>{},warn:()=>{},error:()=>{},table:()=>{}};let a=true;${script};parentPort.on('message',(v)=>{try{parentPort.postMessage(new Function(v)());}catch(err){parentPort.postMessage(err.message+err.stack);}});setInterval(()=>{},10000);`, { eval: true });
+                this.#worker = new Worker(`const{parentPort}=require('worker_threads');const window={addEventListener:()=>{},removeEventListener:()=>{},alert:()=>{},prompt:()=>{},confirm:()=>{},location:{replace:()=>{}},open:()=>{},localStorage:{getItem:()=>{return null;},setItem:()=>{},deleteItem:()=>{}}};const document={addEventListener:()=>{},removeEventListener:()=>{},write:()=>{}};const console={log:()=>{},warn:()=>{},error:()=>{},table:()=>{}};let a=true;${script};parentPort.on('message',(v)=>{try{parentPort.postMessage(new Function(v)());}catch(err){parentPort.postMessage(err.stack);}});setInterval(()=>{},10000);`, { eval: true });
                 this.#running = true;
+                this.#logger.info(`Loaded "${url}" in ${Math.round(performance.now() - loadStart)}ms`);
                 readyResolve();
             };
             let writeAndLoad = (script) => {
                 // wooo jank
                 this.#loadTime = Date.now();
-                this.#log(`Loading "${url}" from web`);
+                this.#info(`Loading "${url}" from web`);
                 const removePadding = ['+', '-', '*', '/', '%', '&', '|', '^', '=', '+=', '-=', '*=', '/=', '%=', '&=', '|=', '^=', '==', '===', '!=', '!==', '>=', '<=', '<', '>', '=>'];
                 const removeGap = ['(', ')', '{', '}', '[', ']', ',', '.', ':', ';'];
                 let compressedScript = script.replaceAll(/\/\/([^\n]*)/ig, '').replaceAll('\n', '').replaceAll('  ', '');
@@ -52,15 +54,15 @@ class JSLoader {
                 for (let s of removeGap) compressedScript = compressedScript.replaceAll(` ${s}`, s).replaceAll(`${s} `, s);
                 if (!fs.existsSync(cacheDir)) fs.mkdirSync(cacheDir);
                 fs.writeFile(cacheFileName, this.#loadTime + '\n' + compressedScript, (err) => {
-                    if (err) throw err;
-                    this.#log(`Wrote "${cacheFileName}"`);
+                    if (err) this.#error(err.stack);
+                    else this.#info(`Wrote "${cacheFileName}"`);
                 });
                 load(compressedScript);
             };
             let loadFromWeb = () => {
                 this.#httpsGet(url, writeAndLoad, (err) => {
                     if (fallbackUrl) {
-                        this.#error(err + ' - using fallback URL');
+                        this.#error(err.stack + ' - using fallback URL');
                         this.#httpsGet(fallbackUrl, writeAndLoad);
                     }
                 });
@@ -69,25 +71,25 @@ class JSLoader {
                 if (fs.existsSync(cacheFileName)) {
                     fs.readFile(cacheFileName, { encoding: 'utf-8' }, (err, data) => {
                         if (err) {
-                            this.error(err);
+                            this.error(err.stack);
                             return;
                         }
                         const raw = data.split('\n');
                         if (raw.length != 2) {
-                            this.#error('Expected two lines in cache file, got ' + raw.length);
-                            this.#log(`Removing "${cacheFileName}" - invalid cache file`);
+                            this.#warn('Expected two lines in cache file, got ' + raw.length);
+                            this.#info(`Removing "${cacheFileName}" - invalid cache file`);
                             fs.unlinkSync(cacheFileName);
                         } else if (parseInt(raw[0]) != raw[0]) {
-                            this.#error('Expected date integer in first line, got "' + raw[0] + '"');
-                            this.#log(`Removing "${cacheFileName}" - invalid cache file`);
+                            this.#warn('Expected date integer in first line, got "' + raw[0] + '"');
+                            this.#info(`Removing "${cacheFileName}" - invalid cache file`);
                             fs.unlinkSync(cacheFileName);
                         } else if (Date.now() - parseInt(raw[0]) >= 86400000) {
-                            this.#log(`Removing "${cacheFileName}" - old cache file`);
+                            this.#info(`Removing "${cacheFileName}" - old cache file`);
                             fs.unlinkSync(cacheFileName);
                         } else {
                             this.#loadTime = parseInt(raw[0]);
                             this.#fromCache = true;
-                            this.#log(`Loading "${url}" from cache`);
+                            this.#info(`Loading "${url}" from cache`);
                             load(raw[1]);
                             return;
                         }
@@ -165,9 +167,9 @@ class JSLoader {
         return this.#fromCache;
     }
 
-    #log(text) {
-        console.log(text)
-        if (this.#logger) this.#logger.log(text);
+    #info(text) {
+        console.info(text)
+        if (this.#logger) this.#logger.info(text);
     }
     #warn(text) {
         console.warn(text);

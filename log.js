@@ -24,8 +24,8 @@ class Logger {
                 fs.renameSync(filePath, dirPath + `log-${fileCount}.log`);
             }
             this.#file = fs.openSync(filePath, 'a');
-            console.log('Logger instance created');
-            this.log('Logger instance created');
+            console.info('Logger instance created');
+            this.info('Logger instance created');
         } catch (err) {
             console.error(err);
         }
@@ -50,12 +50,12 @@ class Logger {
         return `${time.getFullYear()}-${month}-${day} [${hour}:${minute}:${second}]`;
     }
     /**
-     * Append a debug-level entry to the log.
+     * Append an information-level entry to the log.
      * @param {string} text Text.
      */
-    log(text) {
+    info(text) {
         if (this.#file == undefined) return;
-        let prefix = `${this.timestamp()}   LOG | `;
+        let prefix = `${this.timestamp()}  INFO | `;
         fs.appendFile(this.#file, `${prefix}${text.toString().replaceAll('\n', `\n${prefix}`)}\n`, { encoding: 'utf-8' }, (err) => { if (err) console.error(err) });
     }
     /**
@@ -76,6 +76,15 @@ class Logger {
         let prefix = `${this.timestamp()} ERROR | `;
         fs.appendFile(this.#file, `${prefix}${text.toString().replaceAll('\n', `\n${prefix}`)}\n`, { encoding: 'utf-8' }, (err) => { if (err) console.error(err) });
     }
+    /**
+     * Append an fatal-level entry to the log.
+     * @param {string} text Text.
+     */
+    fatal(text) {
+        if (this.#file == undefined) return;
+        let prefix = `${this.timestamp()} FATAL | `;
+        fs.appendFile(this.#file, `${prefix}${text.toString().replaceAll('\n', `\n${prefix}`)}\n`, { encoding: 'utf-8' }, (err) => { if (err) console.error(err) });
+    }
 
     /**
      * Safely closes the logging session.
@@ -83,7 +92,7 @@ class Logger {
     destroy() {
         if (this.#file == undefined) return;
         console.log('Logger instance destroyed');
-        this.log('Logger instance destroyed');
+        this.info('Logger instance destroyed');
         fs.closeSync(this.#file);
         this.#file = undefined;
     }
