@@ -51,7 +51,7 @@ class PixSimGridAdapter {
                 await bluepixelLoader.ready;
                 // currently there is no way to map every available pixel to a number, since
                 // bps stores rotations separately
-                const pixels = await redpixelLoader.execute('let p = []; return p;');
+                const pixels = await bluepixelLoader.execute('let p = []; return p;');
                 const fromBlue = new Uint8ClampedArray(Buffer.alloc(256, 0xff));
                 const toBlue = new Uint8ClampedArray(Buffer.alloc(256, 0xff));
                 for (let id in pixels) {

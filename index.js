@@ -470,7 +470,7 @@ class Room {
         this.#host.addExternalListener(this.#id, 'isPublic', (bool) => this.publicGame = bool);
         this.#host.addExternalListener(this.#id, 'teamSize', (size) => this.teamSize = size);
         this.#host.addExternalListener(this.#id, 'kickPlayer', (username) => this.kick(username));
-        this.#host.addExternalListener(this.#id, 'movePlayer', (data) => this.move(data.username, data.team));
+        this.#host.addExternalListener(this.#id, 'movePlayer', (data) => this.move(data.username, data.team, data.username2));
         this.#host.addExternalListener(this.#id, 'startGame', () => this.start());
         this.#host.send('gameCode', this.#id);
     }
@@ -514,25 +514,18 @@ class Room {
      * @param {number} team Team to move to (0 is spectator, 1 is team A, 2 is team B).
      */
     changeTeam(handler, team) {
-        if (!(handler instanceof PixSimHandler) || typeof team != 'number' || team < 0 || team > 2 || !this.#open) return;
-        switch (team) {
-            case 0:
-                break;
-            case 1:
-                if (this.#teamA.size >= this.#teamSize) return;
-                break;
-            case 2:
-                if (this.#teamB.size >= this.#teamSize) return;
-                break;
+        if (!(handler instanceof PixSimHandler) || typeof team != 'number' || team < 0 || team > 1 || !this.#open) return;
+        if (team) {
+            if (this.#teamB.size >= this.#teamSize) return;
+        } else {
+            if (this.#teamA.size >= this.#teamSize) return;
         }
-        if (this.#spectators.has(handler)) this.#spectators.delete(handler);
-        else if (this.#teamA.has(handler)) this.#teamA.delete(handler);
+        if (this.#teamA.has(handler)) this.#teamA.delete(handler);
         else if (this.#teamB.has(handler)) this.#teamB.delete(handler);
         else return;
-        this.#host.logger.info(`${handler.debugId} switched to ${team == 0 ? 'spectators' : team == 1 ? 'team Alpha' : 'team Beta'} in game ${this.#id}`);
-        if (team == 0) this.#spectators.add(handler);
-        else if (team == 1) this.#teamA.add(handler);
-        else this.#teamB.add(handler);
+        this.#host.logger.info(`${handler.debugId} switched to ${team ? 'team Beta' : 'team Alpha'} in game ${this.#id}`);
+        if (team) this.#teamB.add(handler);
+        else this.#teamA.add(handler);
         this.#updateTeamLists();
     }
     /**
@@ -552,16 +545,42 @@ class Room {
         this.#updateTeamLists();
     }
     /**
-     * Moves a player to another team.
+     * Moves a player to another team. If the player is not found in the teams (e.g. they are a spectator)
+     * nothing is done. If the second player is found (`username2`) then they are swapped.
+     * @param {string} username Username of player to move.
+     * @param {number} team Team to move to.
+     * @param {string} username2 Username of second player to swap with. Not necessary.
      */
-    move(username, team) {
-        if (typeof username != 'string' || typeof team != 'number' || team < 0 || team > 2 || !this.#open) return;
-        let handler = (Array.from(this.#spectators).find(handler => handler.username == username)
-            ?? Array.from(this.#teamA).find(handler => handler.username == username)
-            ?? Array.from(this.#teamB).find(handler => handler.username == username));
+    move(username, team, username2 = '') {
+        if (typeof username != 'string' || (typeof username2 != 'string' && username2 != undefined) || typeof team != 'number' || team < 0 || team > 1 || !this.#open) return;
+        let handler =  Array.from(this.#teamA).find(handler => handler.username == username) ?? Array.from(this.#teamB).find(handler => handler.username == username);
+        let handler2 =  Array.from(this.#teamA).find(handler => handler.username == username2) ?? Array.from(this.#teamB).find(handler => handler.username == username2);
         if (handler) {
-            if (this.#host.logEverything) this.#host.logger.info(`${this.#host.debugId} moved ${handler.debugId}`);
-            this.changeTeam(handler, team);
+            if (handler2) {
+                if (this.#host.logEverything) this.#host.logger.info(`${this.#host.debugId} swapped ${handler.debugId} with ${handler2.debugId}`);
+                let handler1Team = this.#teamB.has(handler);
+                let handler2Team = this.#teamB.has(handler2);
+                if (handler1Team == handler2Team) {
+                    return;
+                } else if (handler1Team) {
+                    this.#teamB.delete(handler);
+                    this.#teamA.delete(handler2);
+                    this.#teamA.add(handler);
+                    this.#teamB.add(handler2);
+                } else if (handler2Team) {
+                    this.#teamA.delete(handler);
+                    this.#teamB.delete(handler2);
+                    this.#teamB.add(handler);
+                    this.#teamA.add(handler2);
+                } else {
+                    this.#host.logger.fatal(`Attempted to swap ${handler.debugId} with ${handler.debugId}, reached impossible case.`);
+                    process.abort();
+                }
+                this.#updateTeamLists();
+            } else {
+                if (this.#host.logEverything) this.#host.logger.info(`${this.#host.debugId} moved ${handler.debugId}`);
+                this.changeTeam(handler, team);
+            }
         }
     }
     /**
@@ -570,9 +589,9 @@ class Room {
      */
     kick(username) {
         if (typeof username != 'string') return;
-        let handler = (Array.from(this.#spectators).find(handler => handler.username == username)
+        let handler = Array.from(this.#spectators).find(handler => handler.username == username)
             ?? Array.from(this.#teamA).find(handler => handler.username == username)
-            ?? Array.from(this.#teamB).find(handler => handler.username == username));
+            ?? Array.from(this.#teamB).find(handler => handler.username == username);
         if (handler) {
             this.#host.logger.info(`${this.#host.debugId} kicked ${handler.debugId} from game ${this.#id}`);
             handler.send('gameKicked');
