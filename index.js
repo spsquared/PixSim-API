@@ -132,7 +132,7 @@ class PixSimAPI {
 
         // error logs
         let handleCrash = (err) => {
-            this.#logger.fatal(err.stack);
+            this.#logger.fatal(err instanceof Error ? err.stack : err);
             console.error(err);
             this.#crashed = true;
             process.off('uncaughtException', handleCrash);
@@ -193,7 +193,7 @@ class PixSimAPI {
      * Disconnects the API
      */
     close() {
-        if (!this.#active && !this.#crashed) return;
+        if (!this.#active && this.#crashed) return;
         this.#active = false;
         PixSimHandler.destroyAll();
         if (this.#io) this.#io.close();

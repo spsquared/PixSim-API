@@ -52,17 +52,17 @@ class PixSimGridAdapter {
                 await bluepixelLoader.ready;
                 // currently there is no way to map every available pixel to a number, since
                 // bps stores rotations separately
-                const pixels = await bluepixelLoader.execute('let p = []; return p;');
+                const pixels = await bluepixelLoader.execute('return 1');
                 const fromBlue = new Uint8ClampedArray(Buffer.alloc(256, 0xff));
                 const toBlue = new Uint8ClampedArray(Buffer.alloc(256, 0xff));
-                for (let id in pixels) {
-                    let lookup = lookupTable.find((v) => v[2] == id);
-                    if (lookup) {
-                        let id2 = parseInt(lookup[0]);
-                        fromBlue[pixels[id]] = id2;
-                        toBlue[id2] = pixels[id];
-                    }
-                }
+                // for (let id in pixels) {
+                //     let lookup = lookupTable.find((v) => v[2] == id);
+                //     if (lookup) {
+                //         let id2 = parseInt(lookup[0]);
+                //         fromBlue[pixels[id]] = id2;
+                //         toBlue[id2] = pixels[id];
+                //     }
+                // }
                 this.#tables.set('bps', {
                     from: fromBlue,
                     to: toBlue

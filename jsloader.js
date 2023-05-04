@@ -38,74 +38,90 @@ class JSLoader {
         if (typeof onerror != 'function') onerror = (err) => { this.#error(err); };
         let loadStart = performance.now();
         let readyResolve;
-        this.#ready = new Promise((resolve, reject) => { readyResolve = resolve; });
+        this.#ready = new Promise((resolve, reject) => readyResolve = resolve);
         try {
-            let cacheFileName = cacheDir + url.substring(8).replace(/[\\/:*?<>|]/ig, '-');
-            let load = (script) => {
+            let loadingUrl = url;
+            let cacheFileName = cacheDir + loadingUrl.substring(8).replace(/[\\/:*?<>|]/ig, '-');
+            let parseScript = (script) => {
                 this.#worker = new Worker(`const{parentPort}=require('worker_threads');const window={addEventListener:()=>{},removeEventListener:()=>{},alert:()=>{},prompt:()=>{},confirm:()=>{},location:{replace:()=>{}},open:()=>{},localStorage:{getItem:()=>{return null;},setItem:()=>{},deleteItem:()=>{}}};const document={addEventListener:()=>{},removeEventListener:()=>{},write:()=>{},getElementById:()=>{return{style:{}}}};const console={log:()=>{},warn:()=>{},error:()=>{},table:()=>{}};${script};parentPort.on('message',(v)=>{try{parentPort.postMessage(new Function(v)());}catch(err){parentPort.postMessage(err.stack);}});setInterval(()=>{},10000);`, { eval: true, });
                 this.#worker.on('error', handleLoadError);
-                this.#running = true;
-                this.#logger.info(`Loaded "${url}" in ${Math.round(performance.now() - loadStart)}ms`);
-                readyResolve();
+                this.#worker.on('online', () => {
+                    let handle = (result) => {
+                        this.#worker.off('message', handle);
+                        this.#running = true;
+                        this.#logger.info(`Loaded "${loadingUrl}" in ${Math.round(performance.now() - loadStart)}ms`);
+                        readyResolve();
+                    };
+                    this.#worker.on('message', handle);
+                    this.#worker.postMessage('return 1');
+                });
             };
-            let writeAndLoad = (script) => {
+            let writeAndParse = (script) => {
                 this.#loadTime = Date.now();
-                this.#info(`Loading "${url}" from web`);
+                this.#info(`Loading "${loadingUrl}" from web`);
                 if (!fs.existsSync(cacheDir)) fs.mkdirSync(cacheDir);
                 this.minify(script).then((minifiedScript) => {
                     fs.writeFile(cacheFileName, this.#loadTime + '\n' + minifiedScript, (err) => {
                         if (err) this.#error(err.stack);
                         else this.#info(`Wrote "${cacheFileName}"`);
                     });
-                    load(minifiedScript);
+                    parseScript(minifiedScript);
                 }).catch((err) => this.#error(err.stack));
             };
-            let loadFromWeb = () => {
-                this.httpsGet(url).then(writeAndLoad).catch(handleLoadError);
+            let load = () => {
+                if (allowCache && fs.existsSync(cacheDir)) {
+                    if (fs.existsSync(cacheFileName)) {
+                        fs.readFile(cacheFileName, { encoding: 'utf-8' }, (err, data) => {
+                            if (err) {
+                                this.error(err.stack);
+                                return;
+                            }
+                            const raw = data.split('\n');
+                            if (raw.length != 2) {
+                                this.#warn('Expected two lines in cache file, got ' + raw.length);
+                                this.#info(`Removing "${cacheFileName}" - invalid cache file`);
+                                fs.unlinkSync(cacheFileName);
+                            } else if (parseInt(raw[0]) != raw[0]) {
+                                this.#warn('Expected date integer in first line, got "' + raw[0] + '"');
+                                this.#info(`Removing "${cacheFileName}" - invalid cache file`);
+                                fs.unlinkSync(cacheFileName);
+                            } else if (Date.now() - parseInt(raw[0]) >= 86400000) {
+                                this.#info(`Removing "${cacheFileName}" - old cache file`);
+                                fs.unlinkSync(cacheFileName);
+                            } else {
+                                this.#loadTime = parseInt(raw[0]);
+                                this.#fromCache = true;
+                                this.#info(`Loading "${loadingUrl}" from cache`);
+                                parseScript(raw[1]);
+                                return;
+                            }
+                            this.httpsGet(loadingUrl).then(writeAndParse).catch(handleLoadError);
+                        });
+                    } else this.httpsGet(loadingUrl).then(writeAndParse).catch(handleLoadError);
+                } else this.httpsGet(loadingUrl).then(writeAndParse).catch(handleLoadError);
             };
             let handleLoadError = (err) => {
-                if (fallbackUrl && !this.#usingFallback) {
-                    this.#usingFallback = true;
-                    cacheFileName = cacheDir + fallbackUrl.substring(8).replace(/[\\/:*?<>|]/ig, '-');
-                    this.#error(err.stack);
-                    this.#info('Load error in parse - using fallback');
-                    this.httpsGet(fallbackUrl).then(writeAndLoad).catch(handleLoadError);
+                if (fallbackUrl) {
+                    if (!this.#usingFallback) {
+                        this.#usingFallback = true;
+                        cacheFileName = cacheDir + fallbackUrl.substring(8).replace(/[\\/:*?<>|]/ig, '-');
+                        loadingUrl = fallbackUrl;
+                        this.#warn(err.stack);
+                        this.#warn(`Error loading ${url} (${Math.round(performance.now() - loadStart)}ms) - using fallback source (${fallbackUrl})`);
+                        loadStart = performance.now();
+                        load();
+                    } else {
+                        this.#error(err.stack);
+                        this.#error(`Error loading ${fallbackUrl} (${Math.round(performance.now() - loadStart)}ms) - main and fallback loads failed, parse failed`);
+                        if (onerror) onerror(err);
+                    }
                 } else {
                     this.#error(err.stack);
-                    this.#info('Load error in parse - load fail');
+                    this.#error(`Error loading ${url} (${Math.round(performance.now() - loadStart)}ms) - no fallback source provided, parse failed`);
                     if (onerror) onerror(err);
                 }
             };
-            if (allowCache && fs.existsSync(cacheDir)) {
-                if (fs.existsSync(cacheFileName)) {
-                    fs.readFile(cacheFileName, { encoding: 'utf-8' }, (err, data) => {
-                        if (err) {
-                            this.error(err.stack);
-                            return;
-                        }
-                        const raw = data.split('\n');
-                        if (raw.length != 2) {
-                            this.#warn('Expected two lines in cache file, got ' + raw.length);
-                            this.#info(`Removing "${cacheFileName}" - invalid cache file`);
-                            fs.unlinkSync(cacheFileName);
-                        } else if (parseInt(raw[0]) != raw[0]) {
-                            this.#warn('Expected date integer in first line, got "' + raw[0] + '"');
-                            this.#info(`Removing "${cacheFileName}" - invalid cache file`);
-                            fs.unlinkSync(cacheFileName);
-                        } else if (Date.now() - parseInt(raw[0]) >= 86400000) {
-                            this.#info(`Removing "${cacheFileName}" - old cache file`);
-                            fs.unlinkSync(cacheFileName);
-                        } else {
-                            this.#loadTime = parseInt(raw[0]);
-                            this.#fromCache = true;
-                            this.#info(`Loading "${url}" from cache`);
-                            load(raw[1]);
-                            return;
-                        }
-                        loadFromWeb();
-                    });
-                } else loadFromWeb();
-            } else loadFromWeb();
+            load();
         } catch (err) {
             onerror(err);
         }
@@ -161,8 +177,8 @@ class JSLoader {
      * @returns `Promise` for the result of executing `script` within the isolate (includes errors).
      */
     async execute(script) {
-        if (!this.#running) return;
         return await new Promise((resolve, reject) => {
+            if (!this.#running) reject(new Error('Worker is not running'));
             let handle = (result) => {
                 this.#worker.off('message', handle);
                 resolve(result);
@@ -180,6 +196,12 @@ class JSLoader {
         return await this.#worker.terminate();
     }
 
+    /**
+     * If the internal Worker is still active and executing code;
+     */
+    get running() {
+        return this.#running;
+    }
     /**
      * A `Promise` representing when the loader has parsed the file.
      */
