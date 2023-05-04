@@ -1,6 +1,7 @@
 const fs = require('fs');
 const HTTPS = require("https");
 const { Worker } = require('worker_threads');
+const queryString = import('query-string');
 const Logger = require('./log');
 
 /**
@@ -14,6 +15,7 @@ class JSLoader {
     #fromCache = true;
     #worker = null;
     #running = false;
+    #usingFallback = false;
     #logger;
 
     /**
@@ -23,49 +25,56 @@ class JSLoader {
      * @param options.fallback secondary URL in case the primary URL fails to fetch.
      * @param options.logger `Logger` instance for logging.
      * @param options.cache Filepath to the cache directory.
+     * @param options.onerror Handler called when an error is thrown within the context. By default an error is thrown.
      * @param options.allowCache Allow using cached files.
      */
-    constructor(url, { fallback: fallbackUrl, logger, cache: cacheDir = './filecache/', allowCache = true } = {}) {
+    constructor(url, { fallback: fallbackUrl, logger, cache: cacheDir = './filecache/', onerror = (err) => { this.#error(err); }, allowCache = true } = {}) {
         if (typeof url != 'string') throw new TypeError('url must be a string');
         if (!url.startsWith('https://')) throw new Error('url has to be an HTTPS url');
         if (typeof fallbackUrl != 'string') fallbackUrl = undefined;
         else if (!fallbackUrl.startsWith('https://')) throw new Error('fallbackUrl has to be an HTTPS url');
-        if (cacheDir.length == 0 || cacheDir[cacheDir.length - 1] != '/') throw new Error('cacheDir must be a valid directory');
         if (logger instanceof Logger) this.#logger = logger;
-        let readyResolve;
+        if (cacheDir.length == 0 || cacheDir[cacheDir.length - 1] != '/') throw new Error('cacheDir must be a valid directory');
+        if (typeof onerror != 'function') onerror = (err) => { this.#error(err); };
         let loadStart = performance.now();
-        this.#ready = new Promise((resolve, reject) => readyResolve = resolve);
+        let readyResolve;
+        this.#ready = new Promise((resolve, reject) => { readyResolve = resolve; });
         try {
             let cacheFileName = cacheDir + url.substring(8).replace(/[\\/:*?<>|]/ig, '-');
             let load = (script) => {
-                this.#worker = new Worker(`const{parentPort}=require('worker_threads');const window={addEventListener:()=>{},removeEventListener:()=>{},alert:()=>{},prompt:()=>{},confirm:()=>{},location:{replace:()=>{}},open:()=>{},localStorage:{getItem:()=>{return null;},setItem:()=>{},deleteItem:()=>{}}};const document={addEventListener:()=>{},removeEventListener:()=>{},write:()=>{}};const console={log:()=>{},warn:()=>{},error:()=>{},table:()=>{}};let a=true;${script};parentPort.on('message',(v)=>{try{parentPort.postMessage(new Function(v)());}catch(err){parentPort.postMessage(err.stack);}});setInterval(()=>{},10000);`, { eval: true });
+                this.#worker = new Worker(`const{parentPort}=require('worker_threads');const window={addEventListener:()=>{},removeEventListener:()=>{},alert:()=>{},prompt:()=>{},confirm:()=>{},location:{replace:()=>{}},open:()=>{},localStorage:{getItem:()=>{return null;},setItem:()=>{},deleteItem:()=>{}}};const document={addEventListener:()=>{},removeEventListener:()=>{},write:()=>{},getElementById:()=>{return{style:{}}}};const console={log:()=>{},warn:()=>{},error:()=>{},table:()=>{}};${script};parentPort.on('message',(v)=>{try{parentPort.postMessage(new Function(v)());}catch(err){parentPort.postMessage(err.stack);}});setInterval(()=>{},10000);`, { eval: true, });
+                this.#worker.on('error', handleLoadError);
                 this.#running = true;
                 this.#logger.info(`Loaded "${url}" in ${Math.round(performance.now() - loadStart)}ms`);
                 readyResolve();
             };
             let writeAndLoad = (script) => {
-                // wooo jank
                 this.#loadTime = Date.now();
                 this.#info(`Loading "${url}" from web`);
-                const removePadding = ['+', '-', '*', '/', '%', '&', '|', '^', '=', '+=', '-=', '*=', '/=', '%=', '&=', '|=', '^=', '==', '===', '!=', '!==', '>=', '<=', '<', '>', '=>'];
-                const removeGap = ['(', ')', '{', '}', '[', ']', ',', '.', ':', ';'];
-                let compressedScript = script.replaceAll(/\/\/([^\n]*)/ig, '').replaceAll('\n', '').replaceAll('  ', '');
-                for (let s of removePadding) compressedScript = compressedScript.replaceAll(` ${s} `, s);
-                for (let s of removeGap) compressedScript = compressedScript.replaceAll(` ${s}`, s).replaceAll(`${s} `, s);
                 if (!fs.existsSync(cacheDir)) fs.mkdirSync(cacheDir);
-                fs.writeFile(cacheFileName, this.#loadTime + '\n' + compressedScript, (err) => {
-                    if (err) this.#error(err.stack);
-                    else this.#info(`Wrote "${cacheFileName}"`);
-                });
-                load(compressedScript);
+                this.minify(script).then((minifiedScript) => {
+                    fs.writeFile(cacheFileName, this.#loadTime + '\n' + minifiedScript, (err) => {
+                        if (err) this.#error(err.stack);
+                        else this.#info(`Wrote "${cacheFileName}"`);
+                    });
+                    load(minifiedScript);
+                }).catch((err) => this.#error(err.stack));
             };
             let loadFromWeb = () => {
-                this.#httpsGet(url, writeAndLoad, (err) => {
-                    if (fallbackUrl) {
-                        this.#error(err.stack + ' - using fallback URL');
-                        this.#httpsGet(fallbackUrl, writeAndLoad);
-                    }
-                });
+                this.httpsGet(url).then(writeAndLoad).catch(handleLoadError);
+            };
+            let handleLoadError = (err) => {
+                if (fallbackUrl && !this.#usingFallback) {
+                    this.#usingFallback = true;
+                    cacheFileName = cacheDir + fallbackUrl.substring(8).replace(/[\\/:*?<>|]/ig, '-');
+                    this.#error(err.stack);
+                    this.#info('Load error in parse - using fallback');
+                    this.httpsGet(fallbackUrl).then(writeAndLoad).catch(handleLoadError);
+                } else {
+                    this.#error(err.stack);
+                    this.#info('Load error in parse - load fail');
+                    if (onerror) onerror(err);
+                }
             };
             if (allowCache && fs.existsSync(cacheDir)) {
                 if (fs.existsSync(cacheFileName)) {
@@ -98,7 +107,7 @@ class JSLoader {
                 } else loadFromWeb();
             } else loadFromWeb();
         } catch (err) {
-            this.#error(err);
+            onerror(err);
         }
     }
 
@@ -108,20 +117,42 @@ class JSLoader {
      * @param {Function} onload Callback when resource is loaded
      * @param {Function} onerror Callback when an error occurs during loading
      */
-    #httpsGet(url, onload, onerror = (err) => {
-        this.#error(err);
-    }) {
+    httpsGet(url) {
         if (typeof url != 'string') throw new TypeError('url must be a string');
-        if (typeof onload != 'function' || typeof onerror != 'function') throw new TypeError('onload and onerror must be functions');
-        HTTPS.get(url, (res) => {
-            if (Math.floor(res.statusCode / 100) != 2) {
-                res.resume();
-                throw new Error(`HTTPS GET request to '${res.headers.location}' failed: ${res.statusCode}`);
-            }
-            let raw = '';
-            res.on('data', (chunk) => raw += chunk);
-            res.on('end', () => onload(raw));
-        }).on('error', (err) => onerror(err));
+        return new Promise((resolve, reject) => {
+            HTTPS.get(url, (res) => {
+                if (res.statusCode != 200) {
+                    res.resume();
+                    reject(new Error(`HTTPS GET request to '${res.headers.location}' failed: ${res.statusCode}`));
+                }
+                let raw = '';
+                res.on('data', (chunk) => raw += chunk);
+                res.on('end', () => resolve(raw));
+            }).on('error', (err) => reject(err));
+        });
+    }
+    /**
+     * Asynchronously use the www.toptal.com 's JavaScript minifier API to minify a script.
+     * @param {string | function} script JavaScript to minify.
+     */
+    minify(script) {
+        if (typeof script != 'string' && typeof script != 'function') throw new TypeError('script must be a string or function');
+        return new Promise(async (resolve, reject) => {
+            const query = (await queryString).default.stringify({ input: script.toString() });
+            HTTPS.request({
+                method: 'POST',
+                hostname: 'www.toptal.com',
+                path: '/developers/javascript-minifier/api/raw'
+            }, (res) => {
+                if (res.statusCode != 200) {
+                    res.resume();
+                    reject(new Error(`HTTPS POST request to '${res.headers.location}' failed: ${res.statusCode}`));
+                }
+                let raw = '';
+                res.on('data', (chunk) => raw += chunk);
+                res.on('end', () => resolve(raw));
+            }).on('error', (err) => reject(err)).setHeader('Content-Type', 'application/x-www-form-urlencoded').end(query, 'utf8');
+        });
     }
 
     /**
@@ -132,10 +163,12 @@ class JSLoader {
     async execute(script) {
         if (!this.#running) return;
         return await new Promise((resolve, reject) => {
-            this.#worker.postMessage(script);
-            this.#worker.on('message', (result) => {
+            let handle = (result) => {
+                this.#worker.off('message', handle);
                 resolve(result);
-            });
+            };
+            this.#worker.on('message', handle);
+            this.#worker.postMessage(script);
         });
     }
     /**
@@ -152,6 +185,12 @@ class JSLoader {
      */
     get ready() {
         return this.#ready;
+    }
+    /**
+     * If the JSLoader had to parse the fallback.
+     */
+    get fromFallback() {
+        return this.#usingFallback;
     }
     /**
      * The time at which the file was loaded in milliseconds since midnight on

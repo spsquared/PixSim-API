@@ -19,6 +19,7 @@ class PixSimGridAdapter {
             logger: logger
         });
         const bluepixelLoader = new JSLoader('https://blue-pixel-simulator.maitiansha1.repl.co/pixelSetup.js', {
+            fallback: 'https://blue.pixelsimulator.repl.co/pixelSetup.js',
             logger: logger
         });
         this.#ready = new Promise(async (resolve, reject) => {
