@@ -19,17 +19,22 @@ class PixSimAPI {
     /**
      * Open a PixSim API.
      * @param {Server} server An HTTP `Server`.
-     * @param {string} path Path to open the API onto.
-     * @param {string} logPath Directory for logging.
+     * @param {{path: string, logPath: string, logEverything: boolean}} options Additional options.
+     * @param {string} options.path Path to open the API onto.
+     * @param {string} options.logPath Directory for logging.
+     * @param {boolean} options.logEverything To log or not to log everything.
      */
-    constructor(server, { path = '/pixsim-api/', logPath = './' } = {}) {
+    constructor(server, { path = '/pixsim-api/', logPath = './', logEverything = false } = {}) {
         if (!(server instanceof Server)) throw new TypeError('server must be an HTTP server');
         this.#logger = new Logger(logPath);
-        console.info('Starting PixSim API...');
-        this.#logger.info('Starting PixSim API...');
+        if (typeof logEverything == 'boolean') this.logEverything = logEverything;
+        console.info('Starting PixSim API');
+        this.#logger.info('Starting PixSim API');
+        if (this.#loggerLogsEverything) this.#logger.debug('Creating PixSimGridAdapter instance');
         this.#gridAdapter = new PixSimGridAdapter(this.#logger);
         // wait for keys and grid adapter to finish loading, then open the server
         new Promise(async (resolve, reject) => {
+            if (this.#loggerLogsEverything) this.#logger.debug('Generating RSA-OAEP keys');
             this.#keys = await webcrypto.subtle.generateKey({
                 name: "RSA-OAEP",
                 modulusLength: 2048,
@@ -39,7 +44,11 @@ class PixSimAPI {
             await this.#gridAdapter.ready;
             resolve();
         }).then(() => {
-            if (this.#crashed) return;
+            if (this.#crashed) {
+                this.#logger.fatal('PixSimAPI initialization failed during startup.');
+                return;
+            }
+            if (this.#loggerLogsEverything) this.#logger.debug('Setting up Socket.IO');
             this.#io = new SocketIO(server, {
                 path: path,
                 cors: {
@@ -67,20 +76,20 @@ class PixSimAPI {
                         this.logger.warn(`Potential DOS attack from ${ip}!`);
                     }
                     recentConnectionKicks[ip] = true;
-                    socket.emit('disconnection: ' + ip);
+                    console.log('disconnection: ' + ip);
                     socket.removeAllListeners();
                     socket.onevent = function (packet) { };
                     socket.disconnect();
                     return;
                 }
-                console.log('connection: ' + ip);
+                console.log('Connection: ' + ip);
 
                 // create handler
                 const handler = new PixSimHandler(socket, this);
 
                 // manage disconnections
                 function handleDisconnect(reason) {
-                    console.log('disconnection: ' + ip);
+                    console.log('Disconnection: ' + ip);
                     handler.destroy(reason);
                     clearInterval(timeoutcheck);
                     clearInterval(packetcheck);
@@ -126,8 +135,8 @@ class PixSimAPI {
                 for (let i in recentConnectionKicks) delete recentConnectionKicks[i];
             }, 1000);
             this.#active = true;
-            console.info('PixSim API started.');
-            this.#logger.info('PixSim API started.');
+            console.info('PixSim API started');
+            this.#logger.info('PixSim API started');
         });
 
         // error logs
@@ -174,7 +183,10 @@ class PixSimAPI {
     }
 
     set logEverything(bool) {
-        if (typeof bool == 'boolean') this.#loggerLogsEverything = bool;
+        if (typeof bool == 'boolean') {
+            this.#loggerLogsEverything = bool;
+            this.#logger.info('PixSimAPI logEverything to ' + this.#loggerLogsEverything);
+        }
     }
     /**
      * Whether to log everything that happens.
@@ -223,7 +235,7 @@ class PixSimHandler {
      */
     constructor(socket, api) {
         if (!(socket instanceof Socket)) throw new TypeError('socket must be a socket.io socket');
-        if (!(api instanceof PixSimAPI)) throw new TypeError('apiHost must be an instance of PixSimAPI');
+        if (!(api instanceof PixSimAPI)) throw new TypeError('api must be an instance of PixSimAPI');
         this.#socket = socket;
         this.#api = api;
         this.#socket.once('clientInfo', async (data) => {
@@ -232,10 +244,10 @@ class PixSimHandler {
             this.#ip = socket.handshake.headers['x-forwarded-for'] ?? socket.handshake.address ?? '127.0.0.1';
             this.#username = data.username;
             this.#clientType = data.client;
-            if (this.#api.logEverything) this.#api.logger.info(`Connection: ${this.debugId}`);
+            this.#api.logger.info(`Connection: ${this.debugId}`);
             // verify password
             try {
-                // console.log(await this.#decode(data.password));
+                // console.log(await this.#api.decode(data.password));
             } catch (err) {
                 console.warn(`${this.debugId} kicked because password decoding failed`);
                 this.destroy('Invalid encoded password', true);
@@ -247,7 +259,7 @@ class PixSimHandler {
             this.#socket.on('joinGame', (data) => this.#joinGame(data));
             this.#socket.on('leaveGame', () => this.leaveGame());
             this.#socket.on('disconnect', (reason) => {
-                if (this.#api.logEverything) this.#api.logger.info(`Disconnection: ${this.debugId} - ${reason}`)
+                this.#api.logger.info(`Disconnection: ${this.debugId} - ${reason}`)
             });
         });
         setImmediate(async () => this.#socket.emit('requestClientInfo', await this.#api.publicKey));
@@ -419,7 +431,7 @@ class PixSimHandler {
         if (kicked) {
             this.#api.logger.warn(`${this.debugId} kicked - ${reason}`);
         } else {
-            this.#api.logger.info(`disconnection: ${this.debugId}`);
+            this.#api.logger.info(`Disconnection: ${this.debugId}`);
         }
         if (this.#currentRoom) this.#currentRoom.leave(this);
         this.#socket.disconnect();
@@ -553,8 +565,8 @@ class Room {
      */
     move(username, team, username2 = '') {
         if (typeof username != 'string' || (typeof username2 != 'string' && username2 != undefined) || typeof team != 'number' || team < 0 || team > 1 || !this.#open) return;
-        let handler =  Array.from(this.#teamA).find(handler => handler.username == username) ?? Array.from(this.#teamB).find(handler => handler.username == username);
-        let handler2 =  Array.from(this.#teamA).find(handler => handler.username == username2) ?? Array.from(this.#teamB).find(handler => handler.username == username2);
+        let handler = Array.from(this.#teamA).find(handler => handler.username == username) ?? Array.from(this.#teamB).find(handler => handler.username == username);
+        let handler2 = Array.from(this.#teamA).find(handler => handler.username == username2) ?? Array.from(this.#teamB).find(handler => handler.username == username2);
         if (handler) {
             if (handler2) {
                 if (this.#host.logEverything) this.#host.logger.info(`${this.#host.debugId} swapped ${handler.debugId} with ${handler2.debugId}`);
@@ -605,7 +617,7 @@ class Room {
         if (this.#teamA.size == this.#teamSize && this.#teamB.size == this.#teamSize && this.#open) {
             this.#host.logger.info(`Game ${this.#id} started`);
             this.#open = false;
-            if (this.#host.logEverything) this.#host.logger.info(`Game ${this.#id} pinging players...`);
+            if (this.#host.logEverything) this.#host.logger.info(`Game ${this.#id} pinging players`);
             new Promise((resolve, reject) => {
                 let responses = 0;
                 for (let player of [...this.#teamA, ...this.#teamB]) {
@@ -618,8 +630,15 @@ class Room {
                     player.send('gameStart');
                 }
             }).then(() => {
-                this.#host.addExternalListener(this.#id, 'tick', (tick) => this.#handleTick(tick));
+                if (this.#host.logEverything) this.#host.logger.info(`Game ${this.#id} connections checked, starting proxy mode`);
                 this.#host.addExternalListener(this.#id, 'gridSize', (size) => this.#handleGridSize(size));
+                this.#host.addExternalListener(this.#id, 'tick', (tick) => this.#handleTick(tick));
+                this.#teamA.forEach((handler) => {
+                    handler.addExternalListener(this.#id, 'input', (input) => this.#handleInput(input, handler, 0));
+                });
+                this.#teamB.forEach((handler) => {
+                    handler.addExternalListener(this.#id, 'input', (input) => this.#handleInput(input, handler, 1));
+                });
             });
         }
     }
@@ -642,7 +661,7 @@ class Room {
         this.#host.sendToGameRoom('gridSize', { width: size.width, height: size.height });
     }
     #handleTick(tick) {
-        if (typeof tick != 'object' || tick == null || !Buffer.isBuffer(tick.grid) || tick.grid.length % 2 != 0 || typeof tick.origin != 'string') {
+        if (typeof tick != 'object' || tick == null || !Buffer.isBuffer(tick.grid) || tick.grid.length % 2 != 0 || tick.grid.length < 2 || typeof tick.origin != 'string' || tick.data == null || typeof tick.data != 'object') {
             console.warn(`${this.#host.debugId} kicked for sending invalid game tick data`);
             this.#host.destroy('Invalid game tick data', true);
             return;
@@ -651,13 +670,60 @@ class Room {
         newGridCache.set(this.#host.clientType, tick.grid);
         this.#forEachHandler((handler) => {
             if (handler == this.#host) return;
-            if (newGridCache.has(handler.clientType)) handler.send('tick', { grid: newGridCache.get(handler.clientType), data: tick.data });
-            else {
-                let newGrid = this.#api.gridAdapter.convert(tick.grid, this.#host.clientType, handler.clientType);
-                newGridCache.set(handler.clientType, newGrid);
-                handler.send('tick', { grid: newGrid, data: tick.data });
+            let grid;
+            if (newGridCache.has(handler.clientType)) {
+                grid = newGridCache.get(handler.clientType);
+            } else {
+                grid = this.#api.gridAdapter.convert(tick.grid, this.#host.clientType, handler.clientType);
+                newGridCache.set(handler.clientType, grid);
             }
+            handler.send('tick', {
+                grid: grid,
+                data: {
+                    tick: tick.data.tick,
+                    teamPixelAmounts: tick.data.teamPixelAmounts
+                }
+            });
         });
+    }
+    #handleInput(input, handler, team) {
+        if (typeof input != 'object' || input == null || typeof input.type != 'number' || !(input.data instanceof Array)) {
+            console.warn(`${handler.debugId} kicked for sending invalid game tick data`);
+            handler.destroy('Invalid game tick data', true);
+            return;
+        }
+        switch (input.type) {
+            case 0:
+                if (input.data.length != 6) {
+                    console.warn(`${handler.debugId} kicked for sending invalid game tick data`);
+                    handler.destroy('Invalid game tick data', true);
+                    return;
+                }
+                let newdata = input.data;
+                newdata[5] = this.#api.gridAdapter.convertSingle(input.data[5], handler.clientType, this.#host.clientType);
+                this.#host.send('input', {
+                    type: input.type,
+                    team: team,
+                    data: newdata
+                });
+                break;
+            case 1:
+                if (input.data.length % 2 != 1 || input.data.length < 3) {
+                    console.warn(`${handler.debugId} kicked for sending invalid game tick data`);
+                    handler.destroy('Invalid game tick data', true);
+                    return;
+                }
+                let inputGrid = this.#api.gridAdapter.convert(Buffer.from(input.data.slice(1)), handler.clientType, this.#host.clientType);
+                this.#host.send('input', {
+                    type: input.type,
+                    team: team,
+                    data: [input.data[0], ...inputGrid]
+                });
+                break;
+            default:
+                console.warn(`${handler.debugId} kicked for sending invalid game tick data`);
+                handler.destroy('Invalid game tick data', true);
+        }
     }
 
     /**

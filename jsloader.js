@@ -1,4 +1,5 @@
 const fs = require('fs');
+const HTTP = require('http');
 const HTTPS = require("https");
 const { Worker } = require('worker_threads');
 const queryString = import('query-string');
@@ -8,6 +9,7 @@ const Logger = require('./log');
  * Parses and executes a JavaScript file loaded from the internet in an isolated Worker thread,
  * allowing execution of code and fetching of data from within the new context. Also keeps a cache of
  * previously loaded files that get replaced every day.
+ * @note NOT SECURE!!!
  */
 class JSLoader {
     #ready = null;
@@ -21,18 +23,19 @@ class JSLoader {
     /**
      * Parse a new JavaScript file from the web.
      * @param {string} url Primary URL to fetch (must start with "https://").
-     * @param {({fallback: string, logger: Logger, dir: string, allowCache: boolean})} options Additional options.
+     * @param {{fallback: string, logger: Logger, cache: string, onerror: function, allowCache: boolean, allowInsecure: boolean}} options Additional options.
      * @param options.fallback secondary URL in case the primary URL fails to fetch.
      * @param options.logger `Logger` instance for logging.
      * @param options.cache Filepath to the cache directory.
      * @param options.onerror Handler called when an error is thrown within the context. By default an error is thrown.
      * @param options.allowCache Allow using cached files.
+     * @param options.allowInsecure Allow using an insecure HTTP request when the HTTPS request fails.
      */
-    constructor(url, { fallback: fallbackUrl, logger, cache: cacheDir = './filecache/', onerror = (err) => { this.#error(err); }, allowCache = true } = {}) {
+    constructor(url, { fallback: fallbackUrl, logger, cache: cacheDir = './filecache/', onerror = (err) => { this.#error(err); }, allowCache = true, allowInsecure = false } = {}) {
         if (typeof url != 'string') throw new TypeError('url must be a string');
-        if (!url.startsWith('https://')) throw new Error('url has to be an HTTPS url');
+        if (!url.startsWith('http://') && !url.startsWith('https://')) throw new Error('url has to be an HTTP/HTTPS url');
         if (typeof fallbackUrl != 'string') fallbackUrl = undefined;
-        else if (!fallbackUrl.startsWith('https://')) throw new Error('fallbackUrl has to be an HTTPS url');
+        else if (!fallbackUrl.startsWith('http://') && !fallbackUrl.startsWith('https://')) throw new Error('fallbackUrl has to be an HTTP/HTTPS url');
         if (logger instanceof Logger) this.#logger = logger;
         if (cacheDir.length == 0 || cacheDir[cacheDir.length - 1] != '/') throw new Error('cacheDir must be a valid directory');
         if (typeof onerror != 'function') onerror = (err) => { this.#error(err); };
@@ -42,6 +45,7 @@ class JSLoader {
         try {
             let loadingUrl = url;
             let cacheFileName = cacheDir + loadingUrl.substring(8).replace(/[\\/:*?<>|]/ig, '-');
+            let usingInsecure = false;
             let parseScript = (script) => {
                 this.#worker = new Worker(`const{parentPort}=require('worker_threads');const window={addEventListener:()=>{},removeEventListener:()=>{},alert:()=>{},prompt:()=>{},confirm:()=>{},location:{replace:()=>{}},open:()=>{},localStorage:{getItem:()=>{return null;},setItem:()=>{},deleteItem:()=>{}}};const document={addEventListener:()=>{},removeEventListener:()=>{},write:()=>{},getElementById:()=>{return{style:{}}}};const console={log:()=>{},warn:()=>{},error:()=>{},table:()=>{}};${script};parentPort.on('message',(v)=>{try{parentPort.postMessage(new Function(v)());}catch(err){parentPort.postMessage(err.stack);}});setInterval(()=>{},10000);`, { eval: true, });
                 this.#worker.on('error', handleLoadError);
@@ -95,30 +99,54 @@ class JSLoader {
                                 parseScript(raw[1]);
                                 return;
                             }
-                            this.httpsGet(loadingUrl).then(writeAndParse).catch(handleLoadError);
+                            loadFromWeb();
                         });
-                    } else this.httpsGet(loadingUrl).then(writeAndParse).catch(handleLoadError);
-                } else this.httpsGet(loadingUrl).then(writeAndParse).catch(handleLoadError);
+                    } else loadFromWeb();
+                } else loadFromWeb();
+            };
+            let loadFromWeb = () => {
+                if (usingInsecure) {
+                    this.httpGet(loadingUrl.replace('https://', 'http://')).then(writeAndParse).catch(handleLoadError);
+                } else {
+                    this.httpsGet(loadingUrl.replace('http://', 'https://')).then(writeAndParse).catch(handleLoadError);
+                }
             };
             let handleLoadError = (err) => {
-                if (fallbackUrl) {
-                    if (!this.#usingFallback) {
-                        this.#usingFallback = true;
-                        cacheFileName = cacheDir + fallbackUrl.substring(8).replace(/[\\/:*?<>|]/ig, '-');
-                        loadingUrl = fallbackUrl;
+                if (!usingInsecure && allowInsecure && ((err instanceof Error && err.message.toLowerCase().includes('ssl')) || (typeof err == 'string' && err.toLowerCase().includes('ssl')))) {
+                    if (this.#usingFallback) {
                         this.#warn(err.stack);
-                        this.#warn(`Error loading ${url} (${Math.round(performance.now() - loadStart)}ms) - using fallback source (${fallbackUrl})`);
+                        this.#warn(`SSL Error loading ${fallbackUrl} (${Math.round(performance.now() - loadStart)}ms) - trying again using HTTP`);
                         loadStart = performance.now();
+                        usingInsecure = true;
                         load();
                     } else {
-                        this.#error(err.stack);
-                        this.#error(`Error loading ${fallbackUrl} (${Math.round(performance.now() - loadStart)}ms) - main and fallback loads failed, parse failed`);
-                        if (onerror) onerror(err);
+                        this.#warn(err.stack);
+                        this.#warn(`SSL Error loading ${url} (${Math.round(performance.now() - loadStart)}ms) - trying again using HTTP`);
+                        loadStart = performance.now();
+                        usingInsecure = true;
+                        load();
                     }
                 } else {
-                    this.#error(err.stack);
-                    this.#error(`Error loading ${url} (${Math.round(performance.now() - loadStart)}ms) - no fallback source provided, parse failed`);
-                    if (onerror) onerror(err);
+                    if (fallbackUrl) {
+                        if (!this.#usingFallback) {
+                            this.#usingFallback = true;
+                            cacheFileName = cacheDir + fallbackUrl.substring(8).replace(/[\\/:*?<>|]/ig, '-');
+                            loadingUrl = fallbackUrl;
+                            this.#warn(err.stack);
+                            this.#warn(`Error loading ${url} (${Math.round(performance.now() - loadStart)}ms) - using fallback source (${fallbackUrl})`);
+                            loadStart = performance.now();
+                            usingInsecure = false;
+                            load();
+                        } else {
+                            this.#error(err.stack);
+                            this.#error(`Error loading ${fallbackUrl} (${Math.round(performance.now() - loadStart)}ms) - main and fallback loads failed, parse failed`);
+                            if (onerror) onerror(err);
+                        }
+                    } else {
+                        this.#error(err.stack);
+                        this.#error(`Error loading ${url} (${Math.round(performance.now() - loadStart)}ms) - no fallback source provided, parse failed`);
+                        if (onerror) onerror(err);
+                    }
                 }
             };
             load();
@@ -127,6 +155,26 @@ class JSLoader {
         }
     }
 
+    /**
+     * Asynchronously GET a resource using HTTP (insecure)
+     * @param {string} url URL to fetch from
+     * @param {Function} onload Callback when resource is loaded
+     * @param {Function} onerror Callback when an error occurs during loading
+     */
+    httpGet(url) {
+        if (typeof url != 'string') throw new TypeError('url must be a string');
+        return new Promise((resolve, reject) => {
+            HTTP.get(url, (res) => {
+                if (res.statusCode != 200) {
+                    res.resume();
+                    reject(new Error(`HTTP GET request to '${res.headers.location}' failed: ${res.statusCode}`));
+                }
+                let raw = '';
+                res.on('data', (chunk) => raw += chunk);
+                res.on('end', () => resolve(raw));
+            }).on('error', (err) => reject(err));
+        });
+    }
     /**
      * Asynchronously GET a resource using HTTPS
      * @param {string} url URL to fetch from

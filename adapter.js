@@ -16,11 +16,13 @@ class PixSimGridAdapter {
     constructor(logger) {
         const redpixelLoader = new JSLoader('https://raw.githubusercontent.com/definitely-nobody-is-here/red-pixel-simulator/master/pixels.js', {
             fallback: 'https://red.pixelsimulator.repl.co/index.js',
-            logger: logger
+            logger: logger,
+            allowInsecure: true
         });
         const bluepixelLoader = new JSLoader('https://blue-pixel-simulator.maitiansha1.repl.co/pixelSetup.js', {
             fallback: 'https://blue.pixelsimulator.repl.co/pixelSetup.js',
-            logger: logger
+            logger: logger,
+            allowInsecure: true
         });
         this.#ready = new Promise(async (resolve, reject) => {
             const rawLookup = fs.readFileSync('./pixsimpixelslookup.csv', 'utf8');
@@ -56,7 +58,7 @@ class PixSimGridAdapter {
                 const fromBlue = new Uint8ClampedArray(Buffer.alloc(256, 0xff));
                 const toBlue = new Uint8ClampedArray(Buffer.alloc(256, 0xff));
                 // for (let id in pixels) {
-                //     let lookup = lookupTable.find((v) => v[2] == id);
+                //     let lookup = lookupTable.find((v) => v[3] == id);
                 //     if (lookup) {
                 //         let id2 = parseInt(lookup[0]);
                 //         fromBlue[pixels[id]] = id2;
@@ -81,7 +83,7 @@ class PixSimGridAdapter {
      * @param {Buffer} grid Incoming compressed grid to convert.
      * @param {string} from ID map of incoming grid.
      * @param {string} to ID map to convert grid to.
-     * @returns {Buffer} A `Buffer` with same length as `grid` where the pixel ID has been remapped.
+     * @returns {Buffer} A `Buffer` with same length as `grid` where the pixel IDs have been remapped, or the input `grid` `Buffer` if conversion is not possible.
      */
     convert(grid, from, to) {
         if (this.#tables.has(from) && this.#tables.has(to)) {
@@ -91,7 +93,20 @@ class PixSimGridAdapter {
             for (let i = 0; i < grid.length; i += 2) {
                 newGrid[i] = toTable[fromTable[grid[i]]];
             }
-        }
+            return newGrid;
+        } else return grid;
+    }
+    /**
+     * Remap a pixel ID as according to the PixSim API specifications.
+     * @param {number} id Incoming Id convert.
+     * @param {string} from ID map of incoming grid.
+     * @param {string} to ID map to convert grid to.
+     * @returns {number} Remapped pixel ID, or the input `id` if conversion is not possible.
+     */
+    convertSingle(id, from, to) {
+        if (this.#tables.has(from) && this.#tables.has(to)) {
+            return this.#tables.get(to).to[this.#tables.get(from).from[id]];
+        } else return id;
     }
 
     /**

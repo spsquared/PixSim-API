@@ -50,6 +50,15 @@ class Logger {
         return `${time.getFullYear()}-${month}-${day} [${hour}:${minute}:${second}]`;
     }
     /**
+     * Append an debug-level entry to the log.
+     * @param {string} text Text.
+     */
+    debug(text) {
+        if (this.#file == undefined) return;
+        let prefix = `${this.timestamp()} DEBUG | `;
+        fs.appendFile(this.#file, `${prefix}${text.toString().replaceAll('\n', `\n${prefix}`)}\n`, { encoding: 'utf-8' }, (err) => { if (err) console.error(err) });
+    }
+    /**
      * Append an information-level entry to the log.
      * @param {string} text Text.
      */
