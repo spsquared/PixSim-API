@@ -501,18 +501,18 @@ class Room {
             this.#spectators.add(handler);
             if (!spectating) handler.send('forcedSpectator');
             handler.joinGameRoom(this.#id);
-            handler.send('joinSuccess', 0);
+            handler.send('joinSuccess', 2);
             handler.send('gameType', this.#type);
             this.#updateTeamLists();
         } else if (this.#bannedPlayers.indexOf(handler.username) == -1) {
             if (this.#teamB.size < this.#teamA.size) {
                 this.#host.logger.info(`${handler.debugId} joined game ${this.#id} on team Beta`);
                 this.#teamB.add(handler);
-                handler.send('joinSuccess', 2);
+                handler.send('joinSuccess', 1);
             } else {
                 this.#host.logger.info(`${handler.debugId} joined game ${this.#id} on team Alpha`);
                 this.#teamA.add(handler);
-                handler.send('joinSuccess', 1);
+                handler.send('joinSuccess', 0);
             }
             handler.joinGameRoom(this.#id);
             handler.send('gameType', this.#type);
@@ -523,7 +523,7 @@ class Room {
      * Moves a `PixSimHandler` to a different team within the room. If the handler is not within the game
      * or the team it moves to is full then the change is not made.
      * @param {PixSimHandler} handler `PixSimHandler` to move.
-     * @param {number} team Team to move to (0 is spectator, 1 is team A, 2 is team B).
+     * @param {number} team Team to move to (0 is team A, 1 is team B).
      */
     changeTeam(handler, team) {
         if (!(handler instanceof PixSimHandler) || typeof team != 'number' || team < 0 || team > 1 || !this.#open) return;
@@ -538,6 +538,7 @@ class Room {
         this.#host.logger.info(`${handler.debugId} switched to ${team ? 'team Beta' : 'team Alpha'} in game ${this.#id}`);
         if (team) this.#teamB.add(handler);
         else this.#teamA.add(handler);
+        handler.send('team', team)
         this.#updateTeamLists();
     }
     /**
@@ -700,7 +701,7 @@ class Room {
                     return;
                 }
                 let newdata = input.data;
-                newdata[5] = this.#api.gridAdapter.convertSingle(input.data[5], handler.clientType, this.#host.clientType);
+                if (input.data[5] != -1) newdata[5] = this.#api.gridAdapter.convertSingle(input.data[5], handler.clientType, this.#host.clientType);
                 this.#host.send('input', {
                     type: input.type,
                     team: team,
