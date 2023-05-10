@@ -460,6 +460,7 @@ class Room {
     #teamSize = 1;
     #spectators = new Set();
     #allowSpectators = true;
+    #running = false;
     #open = true;
     #public = true;
     #bannedPlayers = [];
@@ -504,6 +505,7 @@ class Room {
             handler.send('joinSuccess', 2);
             handler.send('gameType', this.#type);
             this.#updateTeamLists();
+            if (!this.#open) handler.send('gameStart');
         } else if (this.#bannedPlayers.indexOf(handler.username) == -1) {
             if (this.#teamB.size < this.#teamA.size) {
                 this.#host.logger.info(`${handler.debugId} joined game ${this.#id} on team Beta`);
@@ -636,9 +638,11 @@ class Room {
                 this.#host.addExternalListener(this.#id, 'tick', (tick) => this.#handleTick(tick));
                 this.#teamA.forEach((handler) => {
                     handler.addExternalListener(this.#id, 'input', (input) => this.#handleInput(input, handler, 0));
+                    handler.addExternalListener(this.#id, 'inputBatch', (inputs) => this.#handleInputBatch(inputs, handler, 0));
                 });
                 this.#teamB.forEach((handler) => {
                     handler.addExternalListener(this.#id, 'input', (input) => this.#handleInput(input, handler, 1));
+                    handler.addExternalListener(this.#id, 'inputBatch', (inputs) => this.#handleInputBatch(inputs, handler, 1));
                 });
             });
         }
@@ -687,7 +691,19 @@ class Room {
             });
         });
     }
-    #handleInput(input, handler, team) {
+    #handleInputBatch(inputs, handler, team) {
+        if (!(inputs instanceof Array)) {
+            console.warn(`${handler.debugId} kicked for sending invalid game tick data`);
+            handler.destroy('Invalid game tick data', true);
+            return;
+        }
+        let forwarded = [];
+        for (let input of inputs) {
+            forwarded.push(this.#handleInput(input, handler, team, false));
+        }
+        this.#host.send('inputBatch', forwarded.filter(f => f != undefined));
+    }
+    #handleInput(input, handler, team, forward = true) {
         if (typeof input != 'object' || input == null || typeof input.type != 'number' || !(input.data instanceof Array)) {
             console.warn(`${handler.debugId} kicked for sending invalid game tick data`);
             handler.destroy('Invalid game tick data', true);
@@ -702,11 +718,11 @@ class Room {
                 }
                 let newdata = input.data;
                 if (input.data[5] != -1) newdata[5] = this.#api.gridAdapter.convertSingle(input.data[5], handler.clientType, this.#host.clientType);
-                this.#host.send('input', {
-                    type: input.type,
-                    team: team,
-                    data: newdata
-                });
+                if (forward) {
+                    this.#host.send('input', { type: input.type, team: team, data: newdata });
+                } else {
+                    return { type: input.type, team: team, data: newdata };
+                }
                 break;
             case 1:
                 if (input.data.length % 2 != 1 || input.data.length < 3) {
@@ -715,11 +731,11 @@ class Room {
                     return;
                 }
                 let inputGrid = this.#api.gridAdapter.convert(Buffer.from(input.data.slice(1)), handler.clientType, this.#host.clientType);
-                this.#host.send('input', {
-                    type: input.type,
-                    team: team,
-                    data: [input.data[0], ...inputGrid]
-                });
+                if (forward) {
+                    this.#host.send('input', { type: input.type, team: team, data: [input.data[0], ...inputGrid] });
+                } else {
+                    return { type: input.type, team: team, data: [input.data[0], ...inputGrid] };
+                }
                 break;
             default:
                 console.warn(`${handler.debugId} kicked for sending invalid game tick data`);
@@ -799,6 +815,12 @@ class Room {
      */
     get allowSpectators() {
         return this.#allowSpectators;
+    }
+    /**
+     * Whether the game is actively running.
+     */
+    get running() {
+        return !this.#open;
     }
     /**
      * Whether players are still allowed to join.
