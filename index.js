@@ -1,3 +1,4 @@
+const express = require('express');
 const { Server } = require('http');
 const { webcrypto, randomBytes } = require('crypto');
 const { Server: SocketIO, Socket } = require('socket.io');
@@ -18,18 +19,22 @@ class PixSimAPI {
 
     /**
      * Open a PixSim API.
+     * @param {Express} app An HTTP `Server`.
      * @param {Server} server An HTTP `Server`.
      * @param {{path: string, logPath: string, logEverything: boolean}} options Additional options.
      * @param {string} options.path Path to open the API onto.
      * @param {string} options.logPath Directory for logging.
      * @param {boolean} options.logEverything To log or not to log everything.
      */
-    constructor(server, { path = '/pixsim-api/', logPath = './', logEverything = false } = {}) {
+    constructor(app, server, { path = '/pixsim-api/', logPath = './', logEverything = false } = {}) {
+        if (typeof app != 'function' || app == null || !app.hasOwnProperty('mkcalendar') || typeof app.mkcalendar != 'function') throw new TypeError('app must be an Express app'); // no way to check if it's Express app
         if (!(server instanceof Server)) throw new TypeError('server must be an HTTP server');
         this.#logger = new Logger(logPath);
         if (typeof logEverything == 'boolean') this.logEverything = logEverything;
         console.info('Starting PixSim API');
         this.#logger.info('Starting PixSim API');
+        if (this.#loggerLogsEverything) this.#logger.debug('Setting up Express HTTP middleware');
+        app.get('/status', (req, res) => res.send({ active: api.active, time: Date.now() }));
         if (this.#loggerLogsEverything) this.#logger.debug('Creating PixSimGridAdapter instance');
         this.#gridAdapter = new PixSimGridAdapter(this.#logger);
         // wait for keys and grid adapter to finish loading, then open the server

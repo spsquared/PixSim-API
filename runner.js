@@ -18,15 +18,13 @@ app.use(cors({
 }));
 app.use(limiter);
 
-app.get('/', (req, res) => res.send({ active: api.active, time: Date.now() }));
-
 if (process.env.PORT) {
     server.listen(process.env.PORT);
 } else {
     server.listen(5000);
 }
 
-const api = new PixSimAPI(server);
+const api = new PixSimAPI(app, server);
 
 function stop() {
     api.close();
