@@ -34,7 +34,7 @@ class PixSimAPI {
         console.info('Starting PixSim API');
         this.#logger.info('Starting PixSim API');
         if (this.#loggerLogsEverything) this.#logger.debug('Setting up Express HTTP middleware');
-        app.get('/status', (req, res) => res.send({ active: api.active, time: Date.now() }));
+        app.get('/status', (req, res) => res.send({ active: this.active, time: Date.now() }));
         if (this.#loggerLogsEverything) this.#logger.debug('Creating PixSimGridAdapter instance');
         this.#gridAdapter = new PixSimGridAdapter(this.#logger);
         // wait for keys and grid adapter to finish loading, then open the server
