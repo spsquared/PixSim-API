@@ -673,7 +673,7 @@ class Room {
         this.#host.sendToGameRoom('gridSize', { width: size.width, height: size.height });
     }
     #handleTick(tick) {
-        if (typeof tick != 'object' || tick == null || !Buffer.isBuffer(tick.grid) || tick.grid.length % 2 != 0 || tick.grid.length < 2 || typeof tick.origin != 'string' || tick.data == null || typeof tick.data != 'object') {
+        if (typeof tick != 'object' || tick == null || !Buffer.isBuffer(tick.grid) || tick.grid.length % 2 != 0 || tick.grid.length < 2 || !(tick.booleanGrids instanceof Array) || tick.booleanGrids.findIndex(g => !Buffer.isBuffer(g)) != -1 || typeof tick.origin != 'string' || tick.data == null || typeof tick.data != 'object') {
             console.warn(`${this.#host.debugId} kicked for sending invalid game tick data`);
             this.#host.destroy('Invalid game tick data', true);
             return;
@@ -691,6 +691,7 @@ class Room {
             }
             handler.send('tick', {
                 grid: grid,
+                booleanGrids: tick.booleanGrids,
                 data: {
                     tick: tick.data.tick,
                     teamPixelAmounts: tick.data.teamPixelAmounts
