@@ -79,24 +79,6 @@ class PixSimGridAdapter {
     }
 
     /**
-     * Create a copy of and remap the pixel IDs of a compressed grid as according to the PixSim API specifications.
-     * @param {Buffer} grid Incoming compressed grid to convert.
-     * @param {string} from ID map of incoming grid.
-     * @param {string} to ID map to convert grid to.
-     * @returns {Buffer} A `Buffer` with same length as `grid` where the pixel IDs have been remapped, or the input `grid` `Buffer` if conversion is not possible.
-     */
-    convert(grid, from, to) {
-        if (this.#tables.has(from) && this.#tables.has(to)) {
-            let fromTable = this.#tables.get(from).from;
-            let toTable = this.#tables.get(to).to;
-            let newGrid = Buffer.from(grid);
-            for (let i = 0; i < grid.length; i += 2) {
-                newGrid[i] = toTable[fromTable[grid[i]]];
-            }
-            return newGrid;
-        } else return grid;
-    }
-    /**
      * Remap a pixel ID as according to the PixSim API specifications.
      * @param {number} id Incoming Id convert.
      * @param {string} from ID map of incoming grid.
@@ -107,6 +89,24 @@ class PixSimGridAdapter {
         if (this.#tables.has(from) && this.#tables.has(to)) {
             return this.#tables.get(to).to[this.#tables.get(from).from[id]];
         } else return id;
+    }
+    /**
+     * Create a copy of and remap the pixel IDs of a compressed grid as according to the PixSim API specifications.
+     * @param {Buffer} grid Incoming compressed grid to convert.
+     * @param {string} from ID map of incoming grid.
+     * @param {string} to ID map to convert grid to.
+     * @returns {Buffer} A `Buffer` with same length as `grid` where the pixel IDs have been remapped, or the input `grid` `Buffer` if conversion is not possible.
+     */
+    convertGrid(grid, from, to) {
+        if (this.#tables.has(from) && this.#tables.has(to)) {
+            let fromTable = this.#tables.get(from).from;
+            let toTable = this.#tables.get(to).to;
+            let newGrid = Buffer.from(grid);
+            for (let i = 0; i < grid.length; i += 2) {
+                newGrid[i] = toTable[fromTable[grid[i]]];
+            }
+            return newGrid;
+        } else return grid;
     }
 
     /**

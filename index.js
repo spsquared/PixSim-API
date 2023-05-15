@@ -673,28 +673,40 @@ class Room {
         this.#host.sendToGameRoom('gridSize', { width: size.width, height: size.height });
     }
     #handleTick(tick) {
-        if (typeof tick != 'object' || tick == null || !Buffer.isBuffer(tick.grid) || tick.grid.length % 2 != 0 || tick.grid.length < 2 || !(tick.booleanGrids instanceof Array) || tick.booleanGrids.findIndex(g => !Buffer.isBuffer(g)) != -1 || typeof tick.origin != 'string' || tick.data == null || typeof tick.data != 'object') {
+        if (typeof tick != 'object' || tick == null || !Buffer.isBuffer(tick.grid) || tick.grid.length % 2 != 0 || tick.grid.length < 2
+                || !(tick.booleanGrids instanceof Array) || tick.booleanGrids.findIndex(g => !Buffer.isBuffer(g)) != -1
+                || typeof tick.origin != 'string' || tick.data == null || typeof tick.data != 'object'
+                || typeof tick.data.tick != 'number' || !(tick.data.teamPixelAmounts instanceof Array)) {
             console.warn(`${this.#host.debugId} kicked for sending invalid game tick data`);
             this.#host.destroy('Invalid game tick data', true);
             return;
         }
-        let newGridCache = new Map();
-        newGridCache.set(this.#host.clientType, tick.grid);
+        let conversionCache = new Map();
+        conversionCache.set(this.#host.clientType, { grid: tick.grid, pixels: tick.data.teamPixelAmounts });
         this.#forEachHandler((handler) => {
             if (handler == this.#host) return;
-            let grid;
-            if (newGridCache.has(handler.clientType)) {
-                grid = newGridCache.get(handler.clientType);
+            let conversion;
+            if (conversionCache.has(handler.clientType)) {
+                conversion = conversionCache.get(handler.clientType);
             } else {
-                grid = this.#api.gridAdapter.convert(tick.grid, this.#host.clientType, handler.clientType);
-                newGridCache.set(handler.clientType, grid);
+                conversion = {
+                    grid: this.#api.gridAdapter.convertGrid(tick.grid, this.#host.clientType, handler.clientType),
+                    pixels: tick.data.teamPixelAmounts.map(arr => {
+                        let mappedArr = [];
+                        for (let n in arr) {
+                            if (arr[n] !== 0) mappedArr[this.#api.gridAdapter.convertSingle(n, this.#host.clientType, handler.clientType)] = arr[n];
+                        }
+                        return mappedArr;
+                    })
+                };
+                conversionCache.set(handler.clientType, conversion);
             }
             handler.send('tick', {
-                grid: grid,
+                grid: conversion.grid,
                 booleanGrids: tick.booleanGrids,
                 data: {
                     tick: tick.data.tick,
-                    teamPixelAmounts: tick.data.teamPixelAmounts
+                    teamPixelAmounts: conversion.pixels
                 }
             });
         });
@@ -738,7 +750,7 @@ class Room {
                     handler.destroy('Invalid game tick data', true);
                     return;
                 }
-                let inputGrid = this.#api.gridAdapter.convert(Buffer.from(input.data.slice(1)), handler.clientType, this.#host.clientType);
+                let inputGrid = this.#api.gridAdapter.convertGrid(Buffer.from(input.data.slice(1)), handler.clientType, this.#host.clientType);
                 if (forward) {
                     this.#host.send('input', { type: input.type, team: team, data: [input.data[0], ...inputGrid] });
                 } else {
