@@ -304,7 +304,7 @@ class PixSimHandler {
     #joinGame(data) {
         if (typeof data != 'object' || data == null || this.#currentRoom != null) return;
         if (this.#api.logEverything) this.#api.logger.info(`${this.debugId} attempted to join game ${data.code}`);
-        const rooms = Room.publicRooms(data.spectating);
+        const rooms = Room.openRooms(data.spectating);
         for (const room of rooms) {
             if (room.id == data.code) {
                 room.join(this, data.spectating);
@@ -855,6 +855,17 @@ class Room {
         Room.#list.delete(this);
     }
 
+    /**
+     * Gets a list of all open games, regardless of if the room is public or searching as a spectator.
+     * @returns An array of `Room`s.
+     */
+    static openRooms() {
+        const ret = [];
+        for (const room of Room.#list) {
+            if (room.isOpen) ret.push(room);
+        }
+        return ret;
+    }
     /**
      * Gets a list of all open public games, considering whether spectators are on or not.
      * @param {boolean} spectating Only show rooms with spectators on.
