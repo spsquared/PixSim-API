@@ -3,7 +3,7 @@ const HTTP = require('http');
 const HTTPS = require("https");
 const { Worker } = require('worker_threads');
 const queryString = import('query-string');
-const Logger = require('./log');
+const Logger = require('../../log');
 
 /**
  * Parses and executes a JavaScript file loaded from the internet in an isolated Worker thread,

@@ -17,6 +17,8 @@ app.use(cors({
     methods: ['GET', 'POST', 'DELETE', 'UPDATE', 'PUT', 'PATCH']
 }));
 app.use(limiter);
+app.get('/coffee', (req, res) => res.sendStatus(418));
+app.get('/', (req, res) => { res.writeHead(301, { location: 'http://pixelsimulator.repl.co' }); res.end(); });
 
 if (process.env.PORT) {
     server.listen(process.env.PORT);

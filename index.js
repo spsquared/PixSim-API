@@ -1,9 +1,8 @@
-const express = require('express');
 const { Server } = require('http');
 const { webcrypto, randomBytes } = require('crypto');
 const { Server: SocketIO, Socket } = require('socket.io');
 const Logger = require('./log');
-const PixSimGridAdapter = require('./adapter');
+const PixSimGridAdapter = require('./src/multiplayer/adapter');
 
 /**
  * A full API opening on an HTTP server utilizing Socket.IO.

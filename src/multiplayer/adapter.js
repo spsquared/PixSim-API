@@ -1,6 +1,6 @@
 const fs = require("fs");
 const JSLoader = require("./jsloader");
-const Logger = require("./log");
+const Logger = require("../../log");
 
 /**
  * Allows for conversion of pixel ids from one game to another.
@@ -25,7 +25,7 @@ class PixSimGridAdapter {
             allowInsecure: true
         });
         this.#ready = new Promise(async (resolve, reject) => {
-            const rawLookup = fs.readFileSync('./pixsimpixelslookup.csv', 'utf8');
+            const rawLookup = fs.readFileSync('./src/multiplayer/pixsimpixelslookup.csv', 'utf8');
             const lookupTable = [];
             rawLookup.split('\n').forEach((line, i) => {
                 lookupTable[i] = line.split(',');
