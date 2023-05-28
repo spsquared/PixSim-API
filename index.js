@@ -673,6 +673,7 @@ class Room {
     }
     #handleTick(tick) {
         if (typeof tick != 'object' || tick == null || !Buffer.isBuffer(tick.grid) || tick.grid.length % 2 != 0 || tick.grid.length < 2
+                || !Buffer.isBuffer(tick.teamGrid) || tick.teamGrid.length < 1
                 || !(tick.booleanGrids instanceof Array) || tick.booleanGrids.findIndex(g => !Buffer.isBuffer(g)) != -1
                 || typeof tick.origin != 'string' || tick.data == null || typeof tick.data != 'object'
                 || typeof tick.data.tick != 'number' || !(tick.data.teamPixelAmounts instanceof Array)) {
@@ -702,6 +703,7 @@ class Room {
             }
             handler.send('tick', {
                 grid: conversion.grid,
+                teamGrid: tick.teamGrid,
                 booleanGrids: tick.booleanGrids,
                 data: {
                     tick: tick.data.tick,
