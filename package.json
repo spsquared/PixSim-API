@@ -2,9 +2,10 @@
   "name": "pixsim-api",
   "version": "1.0.0",
   "description": "PixSim-API for cross-game playing",
-  "main": "runner.js",
+  "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "echo \"No testing!!\" && exit 1",
+    "run": "node runner.js"
   },
   "keywords": [],
   "author": "sp^2",

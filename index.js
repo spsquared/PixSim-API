@@ -46,7 +46,9 @@ class PixSimAPI {
                 publicExponent: new Uint8Array([1, 0, 1]),
                 hash: "SHA-256"
             }, false, ['encrypt', 'decrypt']);
+            if (this.#loggerLogsEverything) this.#logger.debug('RSA-OAEP keys generated');
             await this.#gridAdapter.ready;
+            if (this.#loggerLogsEverything) this.#logger.debug('PixSimGridAdapter ready');
             resolve();
         }).then(() => {
             if (this.#crashed) {
@@ -107,7 +109,7 @@ class PixSimAPI {
                 let timeout = 0;
                 const timeoutcheck = setInterval(() => {
                     timeout++;
-                    if (timeout > 300) handleDisconnect();
+                    if (timeout > 300) handleDisconnect('timed out');
                 }, 1000);
 
                 // performance metrics
@@ -285,7 +287,7 @@ class PixSimHandler {
     }
     #getPublicRooms(data) {
         if (typeof data != 'object' || data == null) return;
-        if (this.#api.logEverything) this.#api.logger.info(`${this.debugId} requested list of public games`);
+        if (this.#api.logEverything) this.#api.logger.debug(`${this.debugId} requested list of public games`);
         const rooms = Room.publicRooms(data.spectating);
         const games = [];
         for (const room of rooms) {

@@ -37,7 +37,7 @@ class Logger {
      */
     timestamp() {
         const time = new Date();
-        let month = time.getMonth().toString();
+        let month = (time.getMonth() + 1).toString();
         let day = time.getDate().toString();
         let hour = time.getHours().toString();
         let minute = time.getMinutes().toString();
