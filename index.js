@@ -31,7 +31,7 @@ class PixSimAPI {
     constructor(app, server, { path = '/pixsim-api/', mapsPath = './maps', logPath = './', logEverything = false } = {}) {
         if (typeof app != 'function' || app == null || !app.hasOwnProperty('mkcalendar') || typeof app.mkcalendar != 'function') throw new TypeError('app must be an Express app'); // no way to check if it's Express app
         if (!(server instanceof Server)) throw new TypeError('server must be an HTTP server');
-        if (path.endsWith('/') && path.length > 1) path = path.substring(0, path.length - 2);
+        if (path.endsWith('/') && path.length > 1) path = path.substring(0, path.length - 1);
         this.#logger = new Logger(logPath);
         if (typeof logEverything == 'boolean') this.logEverything = logEverything;
         console.info('Starting PixSim API');
@@ -41,6 +41,8 @@ class PixSimAPI {
         app.get(path + '/status', (req, res) => res.send({ active: this.active, starting: this.#starting, crashed: this.#crashed, time: Date.now() }));
         // if (this.#loggerLogsEverything) this.#logger.debug('Creating MapManager instance');
         // this.#mapManager = new MapManager(mapsPath);
+        // app.use(path + '/map', (req, res, next) => {
+        // });
         if (this.#loggerLogsEverything) this.#logger.debug('Creating PixSimGridAdapter instance');
         this.#gridAdapter = new PixSimGridAdapter(this.#logger);
         // wait for keys and grid adapter to finish loading, then open the server
@@ -63,7 +65,7 @@ class PixSimAPI {
             }
             if (this.#loggerLogsEverything) this.#logger.debug('Setting up Socket.IO');
             this.#io = new SocketIO(server, {
-                path: path,
+                path: path + '/game',
                 cors: {
                     origin: '*',
                     methods: ['GET', 'POST']
