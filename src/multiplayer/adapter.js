@@ -1,6 +1,6 @@
 const fs = require("fs");
 const JSLoader = require("./jsloader");
-const Logger = require("../../log");
+const Logger = require("../log");
 
 /**
  * Allows for conversion of pixel ids from one game to another.
@@ -24,56 +24,42 @@ class PixSimGridAdapter {
             logger: logger,
             allowInsecure: true
         });
+        const platformerLoader = new JSLoader('https://pixel-simulator-platformer-1.maitiansha1.repl.co/pixels.js', {
+            // fallback: '',
+            logger: logger,
+            allowInsecure: true
+        });
         this.#ready = new Promise(async (resolve, reject) => {
-            const rawLookup = fs.readFileSync('./src/multiplayer/pixsimpixelslookup.csv', 'utf8');
+            const rawLookup = fs.readFileSync(__dirname + '/pixsimpixelslookup.csv', 'utf8');
             const lookupTable = [];
             rawLookup.split('\n').forEach((line, i) => {
                 lookupTable[i] = line.split(',');
             });
-            let loadRed = new Promise(async (resolve, reject) => {
-                await redpixelLoader.ready;
-                const pixels = await redpixelLoader.execute('let p = []; for (let i in pixels) p[i] = pixels[i].numId; return p;');
-                const fromRed = new Uint8ClampedArray(Buffer.alloc(256, 0xff));
-                const toRed = new Uint8ClampedArray(Buffer.alloc(256, 0xff));
-                for (let id in pixels) {
-                    let lookup = lookupTable.find((v) => v[1] == id);
-                    if (lookup) {
-                        let id2 = parseInt(lookup[0]);
-                        fromRed[pixels[id]] = id2;
-                        toRed[id2] = pixels[id];
+            let extract = (gid, loader, script) => {
+                return new Promise(async (resolve, reject) => {
+                    await loader.ready;
+                    const pixels = await loader.execute(script);
+                    const from = new Uint8ClampedArray(Buffer.alloc(256, 0xff));
+                    const to = new Uint8ClampedArray(Buffer.alloc(256, 0xff));
+                    for (let id in pixels) {
+                        let lookup = lookupTable.find((v) => v[1] == id);
+                        if (lookup) {
+                            let id2 = parseInt(lookup[0]);
+                            from[pixels[id]] = id2;
+                            to[id2] = pixels[id];
+                        }
                     }
-                }
-                this.#tables.set('rps', {
-                    from: fromRed,
-                    to: toRed
+                    this.#tables.set(gid, {
+                        from: from,
+                        to: to
+                    });
+                    await loader.terminate();
+                    resolve();
                 });
-                await redpixelLoader.terminate();
-                resolve();
-            });
-            let loadBlue = new Promise(async (resolve, reject) => {
-                await bluepixelLoader.ready;
-                // currently there is no way to map every available pixel to a number, since
-                // bps stores rotations separately
-                const pixels = await bluepixelLoader.execute('return 1');
-                const fromBlue = new Uint8ClampedArray(Buffer.alloc(256, 0xff));
-                const toBlue = new Uint8ClampedArray(Buffer.alloc(256, 0xff));
-                // for (let id in pixels) {
-                //     let lookup = lookupTable.find((v) => v[3] == id);
-                //     if (lookup) {
-                //         let id2 = parseInt(lookup[0]);
-                //         fromBlue[pixels[id]] = id2;
-                //         toBlue[id2] = pixels[id];
-                //     }
-                // }
-                this.#tables.set('bps', {
-                    from: fromBlue,
-                    to: toBlue
-                });
-                await bluepixelLoader.terminate();
-                resolve();
-            });
-            await loadRed;
-            await loadBlue;
+            };
+            await extract('rps', redpixelLoader, 'let p = []; for (let i in pixels) p[i] = pixels[i].numId; return p;');
+            await extract('bps', bluepixelLoader, 'return 1;');
+            // await extract('psp', platformerLoader, 'let p = []; for (let i in PIXELS) p[PIXELS[i].id] = i; return p;');
             resolve();
         });
     }

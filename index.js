@@ -1,8 +1,9 @@
 const { Server } = require('http');
 const { webcrypto, randomBytes } = require('crypto');
 const { Server: SocketIO, Socket } = require('socket.io');
-const Logger = require('./log');
+const Logger = require('./src/log');
 const PixSimGridAdapter = require('./src/multiplayer/adapter');
+const MapManager = require('./src/multiplayer/maps');
 
 /**
  * A full API opening on an HTTP server utilizing Socket.IO.
@@ -13,6 +14,7 @@ class PixSimAPI {
     #keys = null;
     #io = null;
     #gridAdapter = null;
+    #mapManager = null;
     #active = false;
     #crashed = false;
     #starting = true;
@@ -26,15 +28,19 @@ class PixSimAPI {
      * @param {string} options.logPath Directory for logging.
      * @param {boolean} options.logEverything To log or not to log everything.
      */
-    constructor(app, server, { path = '/pixsim-api/', logPath = './', logEverything = false } = {}) {
+    constructor(app, server, { path = '/pixsim-api/', mapsPath = './maps', logPath = './', logEverything = false } = {}) {
         if (typeof app != 'function' || app == null || !app.hasOwnProperty('mkcalendar') || typeof app.mkcalendar != 'function') throw new TypeError('app must be an Express app'); // no way to check if it's Express app
         if (!(server instanceof Server)) throw new TypeError('server must be an HTTP server');
+        if (path.endsWith('/') && path.length > 1) path = path.substring(0, path.length - 2);
         this.#logger = new Logger(logPath);
         if (typeof logEverything == 'boolean') this.logEverything = logEverything;
         console.info('Starting PixSim API');
         this.#logger.info('Starting PixSim API');
-        if (this.#loggerLogsEverything) this.#logger.debug('Setting up Express HTTP middleware');
-        app.get('/status', (req, res) => res.send({ active: this.active, starting: this.#starting, crashed: this.#crashed, time: Date.now() }));
+        if (this.#loggerLogsEverything) this.#logger.debug(`Setting up Express HTTP middleware on '${path}'`);
+        app.get(path, (req, res) => { res.writeHead(301, { location: '/pixsim-api/status' }); res.end(); });
+        app.get(path + '/status', (req, res) => res.send({ active: this.active, starting: this.#starting, crashed: this.#crashed, time: Date.now() }));
+        // if (this.#loggerLogsEverything) this.#logger.debug('Creating MapManager instance');
+        // this.#mapManager = new MapManager(mapsPath);
         if (this.#loggerLogsEverything) this.#logger.debug('Creating PixSimGridAdapter instance');
         this.#gridAdapter = new PixSimGridAdapter(this.#logger);
         // wait for keys and grid adapter to finish loading, then open the server
@@ -248,7 +254,7 @@ class PixSimHandler {
         this.#api = api;
         this.#socket.once('clientInfo', async (data) => {
             if (typeof data != 'object' || data === null) this.destroy('Invalid connection handshake data');
-            if (data.client != 'rps' && data.client != 'bps') this.destroy('Invalid connection handshake data');
+            if (data.client != 'rps' && data.client != 'bps' && data.client != 'psp') this.destroy('Invalid connection handshake data');
             this.#ip = socket.handshake.headers['x-forwarded-for'] ?? socket.handshake.address ?? '127.0.0.1';
             this.#username = data.username;
             this.#clientType = data.client;
@@ -399,7 +405,7 @@ class PixSimHandler {
         return this.#username;
     }
     /**
-     * The game client of the player (currently, only "rps" and "bps" are accepted).
+     * The game client of the player (currently, only "rps", "bps", and "psp" are accepted).
      */
     get clientType() {
         return this.#clientType;
@@ -709,7 +715,9 @@ class Room {
                 booleanGrids: tick.booleanGrids,
                 data: {
                     tick: tick.data.tick,
-                    teamPixelAmounts: conversion.pixels
+                    teamPixelAmounts: conversion.pixels,
+                    pixeliteCounts: tick.data.pixeliteCounts,
+                    cameraShake: tick.data.cameraShake ?? 0
                 }
             });
         });

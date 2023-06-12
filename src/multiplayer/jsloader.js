@@ -3,7 +3,7 @@ const HTTP = require('http');
 const HTTPS = require("https");
 const { Worker } = require('worker_threads');
 const queryString = import('query-string');
-const Logger = require('../../log');
+const Logger = require('../log');
 
 /**
  * Parses and executes a JavaScript file loaded from the internet in an isolated Worker thread,
@@ -29,7 +29,7 @@ class JSLoader {
      * @param options.cache Filepath to the cache directory.
      * @param options.onerror Handler called when an error is thrown within the context. By default an error is thrown.
      * @param options.allowCache Allow using cached files.
-     * @param options.allowInsecure Allow using an insecure HTTP request when the HTTPS request fails.
+     * @param options.allowInsecure Allow using an insecure HTTP request when the HTTPS request fails. *JSLoader still is not sandboxed even with this option off!*
      */
     constructor(url, { fallback: fallbackUrl, logger, cache: cacheDir = './filecache/', onerror = (err) => { this.#error(err); }, allowCache = true, allowInsecure = false } = {}) {
         if (typeof url != 'string') throw new TypeError('url must be a string');
