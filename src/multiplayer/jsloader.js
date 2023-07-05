@@ -4,6 +4,7 @@ const HTTPS = require("https");
 const { Worker } = require('worker_threads');
 const queryString = import('query-string');
 const Logger = require('../log');
+const path = require('path');
 
 /**
  * Parses and executes a JavaScript file loaded from the internet in an isolated Worker thread,
@@ -32,19 +33,20 @@ class JSLoader {
      * @param options.allowInsecure Allow using an insecure HTTP request when the HTTPS request fails. *JSLoader still is not sandboxed even with this option off!*
      */
     constructor(url, { fallback: fallbackUrl, logger, cache: cacheDir = './filecache/', onerror = (err) => { this.#error(err); }, allowCache = true, allowInsecure = false } = {}) {
-        if (typeof url != 'string') throw new TypeError('url must be a string');
-        if (!url.startsWith('http://') && !url.startsWith('https://')) throw new Error('url has to be an HTTP/HTTPS url');
+        if (typeof url != 'string') throw new TypeError('"url" must be a string');
+        if (!url.startsWith('http://') && !url.startsWith('https://')) throw new Error('"url" has to be an HTTP/HTTPS url');
         if (typeof fallbackUrl != 'string') fallbackUrl = undefined;
-        else if (!fallbackUrl.startsWith('http://') && !fallbackUrl.startsWith('https://')) throw new Error('fallbackUrl has to be an HTTP/HTTPS url');
+        else if (!fallbackUrl.startsWith('http://') && !fallbackUrl.startsWith('https://')) throw new Error('"fallbackUrl" has to be an HTTP/HTTPS url');
         if (logger instanceof Logger) this.#logger = logger;
-        if (cacheDir.length == 0 || cacheDir[cacheDir.length - 1] != '/') throw new Error('cacheDir must be a valid directory');
+        if (!fs.existsSync(cacheDir)) throw new Error('"cacheDir" must be a valid directory');
+        cacheDir = path.resolve(cacheDir);
         if (typeof onerror != 'function') onerror = (err) => { this.#error(err); };
         let loadStart = performance.now();
         let readyResolve;
         this.#ready = new Promise((resolve, reject) => readyResolve = resolve);
         try {
             let loadingUrl = url;
-            let cacheFileName = cacheDir + loadingUrl.substring(8).replace(/[\\/:*?<>|]/ig, '-');
+            let cacheFileName = path.resolve(cacheDir, loadingUrl.substring(8).replace(/[\\/:*?<>|]/ig, '-'));
             let usingInsecure = false;
             let parseScript = (script) => {
                 this.#worker = new Worker(`const{parentPort}=require('worker_threads');const window={addEventListener:()=>{},removeEventListener:()=>{},alert:()=>{},prompt:()=>{},confirm:()=>{},location:{replace:()=>{}},open:()=>{},localStorage:{getItem:()=>{return null;},setItem:()=>{},deleteItem:()=>{}}};const document={addEventListener:()=>{},removeEventListener:()=>{},write:()=>{},getElementById:()=>{return{style:{}}}};const console={log:()=>{},warn:()=>{},error:()=>{},table:()=>{}};${script};parentPort.on('message',(v)=>{try{parentPort.postMessage(new Function(v)());}catch(err){parentPort.postMessage(err.stack);}});setInterval(()=>{},10000);`, { eval: true, });
@@ -53,7 +55,7 @@ class JSLoader {
                     let handle = (result) => {
                         this.#worker.off('message', handle);
                         this.#running = true;
-                        this.#logger.info(`Loaded "${loadingUrl}" in ${Math.round(performance.now() - loadStart)}ms`);
+                        this.#debug(`Loaded ${loadingUrl} in ${Math.round(performance.now() - loadStart)}ms`);
                         readyResolve();
                     };
                     this.#worker.on('message', handle);
@@ -62,7 +64,7 @@ class JSLoader {
             };
             let writeAndParse = (script) => {
                 this.#loadTime = Date.now();
-                this.#info(`Loading "${loadingUrl}" from web`);
+                this.#info(`Loading ${loadingUrl} from web`);
                 if (!fs.existsSync(cacheDir)) fs.mkdirSync(cacheDir);
                 this.minify(script).then((minifiedScript) => {
                     fs.writeFile(cacheFileName, this.#loadTime + '\n' + minifiedScript, (err) => {
@@ -81,11 +83,11 @@ class JSLoader {
                                 return;
                             }
                             const raw = data.split('\n');
-                            if (raw.length != 2) {
-                                this.#warn('Expected two lines in cache file, got ' + raw.length);
-                                this.#info(`Removing "${cacheFileName}" - invalid cache file`);
+                            if (raw.length == 0) {
+                                this.#warn('Cache file empty');
+                                this.#info(`Removing "${cacheFileName}" - empty cache file`);
                                 fs.unlinkSync(cacheFileName);
-                            } else if (parseInt(raw[0]) != raw[0]) {
+                            if (parseInt(raw[0]) != raw[0]) {
                                 this.#warn('Expected date integer in first line, got "' + raw[0] + '"');
                                 this.#info(`Removing "${cacheFileName}" - invalid cache file`);
                                 fs.unlinkSync(cacheFileName);
@@ -95,7 +97,7 @@ class JSLoader {
                             } else {
                                 this.#loadTime = parseInt(raw[0]);
                                 this.#fromCache = true;
-                                this.#info(`Loading "${loadingUrl}" from cache`);
+                                this.#info(`Loading ${loadingUrl} from cache (${cacheFileName})`);
                                 parseScript(raw[1]);
                                 return;
                             }
@@ -130,7 +132,7 @@ class JSLoader {
                     if (fallbackUrl) {
                         if (!this.#usingFallback) {
                             this.#usingFallback = true;
-                            cacheFileName = cacheDir + fallbackUrl.substring(8).replace(/[\\/:*?<>|]/ig, '-');
+                            cacheFileName = path.resolve(cacheDir, fallbackUrl.substring(8).replace(/[\\/:*?<>|]/ig, '-'));
                             loadingUrl = fallbackUrl;
                             this.#warn(err.stack);
                             this.#warn(`Error loading ${url} (${Math.round(performance.now() - loadStart)}ms) - using fallback source (${fallbackUrl})`);
@@ -167,7 +169,7 @@ class JSLoader {
             HTTP.get(url, (res) => {
                 if (res.statusCode != 200) {
                     res.resume();
-                    reject(new Error(`HTTP GET request to '${res.headers.location}' failed: ${res.statusCode}`));
+                    reject(new Error(`HTTP GET request to ${res.headers.location} failed: ${res.statusCode}`));
                 }
                 let raw = '';
                 res.on('data', (chunk) => raw += chunk);
@@ -187,7 +189,7 @@ class JSLoader {
             HTTPS.get(url, (res) => {
                 if (res.statusCode != 200) {
                     res.resume();
-                    reject(new Error(`HTTPS GET request to '${res.headers.location}' failed: ${res.statusCode}`));
+                    reject(new Error(`HTTPS GET request to ${res.headers.location} failed: ${res.statusCode}`));
                 }
                 let raw = '';
                 res.on('data', (chunk) => raw += chunk);
@@ -210,7 +212,7 @@ class JSLoader {
             }, (res) => {
                 if (res.statusCode != 200) {
                     res.resume();
-                    reject(new Error(`HTTPS POST request to '${res.headers.location}' failed: ${res.statusCode}`));
+                    reject(new Error(`HTTPS POST request to ${res.headers.location} failed: ${res.statusCode}`));
                 }
                 let raw = '';
                 res.on('data', (chunk) => raw += chunk);
@@ -276,17 +278,20 @@ class JSLoader {
         return this.#fromCache;
     }
 
+    #debug(text) {
+        if (this.#logger) this.#logger.debug('[JSLoader] ' + text);
+    }
     #info(text) {
-        console.info(text)
-        if (this.#logger) this.#logger.info(text);
+        console.info(text);
+        if (this.#logger) this.#logger.info('[JSLoader] ' + text);
     }
     #warn(text) {
         console.warn(text);
-        if (this.#logger) this.#logger.warn(text);
+        if (this.#logger) this.#logger.warn('[JSLoader] ' + text);
     }
     #error(text) {
         console.error(text);
-        if (this.#logger) this.#logger.error(text);
+        if (this.#logger) this.#logger.error('[JSLoader] ' + text);
     }
 }
 
