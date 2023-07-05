@@ -87,7 +87,7 @@ class JSLoader {
                                 this.#warn('Cache file empty');
                                 this.#info(`Removing "${cacheFileName}" - empty cache file`);
                                 fs.unlinkSync(cacheFileName);
-                            if (parseInt(raw[0]) != raw[0]) {
+                            } else if (parseInt(raw[0]) != raw[0]) {
                                 this.#warn('Expected date integer in first line, got "' + raw[0] + '"');
                                 this.#info(`Removing "${cacheFileName}" - invalid cache file`);
                                 fs.unlinkSync(cacheFileName);
