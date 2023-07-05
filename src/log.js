@@ -1,4 +1,5 @@
 const fs = require('fs');
+const fspath = require('path');
 
 /**
  * A simple logging class with timestamps and logging levels.
@@ -13,15 +14,16 @@ class Logger {
      * @param {string} path Filepath to the log directory. The default is `'./'`.
      */
     constructor(path = './') {
-        if (typeof path != 'string') throw new TypeError('path must be a string');
-        if (path.length == 0 || path[path.length - 1] != '/') throw new Error('path must be a valid directory');
+        if (!fs.existsSync(path)) throw new Error('"path" must be a valid directory');
+        path = fspath.resolve(path);
         try {
-            let filePath = path + 'log.log';
+            let filePath = fspath.resolve(path, 'log.log');
             if (fs.existsSync(filePath)) {
-                let dirPath = path + 'logs/';
+                let dirPath = fspath.resolve(path, 'logs/');
+                console.log(dirPath)
                 if (!fs.existsSync(dirPath)) fs.mkdirSync(dirPath);
                 let fileCount = fs.readdirSync(dirPath).length;
-                fs.renameSync(filePath, dirPath + `log-${fileCount}.log`);
+                fs.renameSync(filePath, fspath.resolve(dirPath,`log-${fileCount}.log`));
             }
             this.#file = fs.openSync(filePath, 'a');
             console.info('Logger instance created');

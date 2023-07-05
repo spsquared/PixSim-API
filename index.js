@@ -2,7 +2,7 @@ const { Server } = require('http');
 const { webcrypto, randomBytes } = require('crypto');
 const { Server: SocketIO, Socket } = require('socket.io');
 const Logger = require('./src/log');
-const PixSimGridAdapter = require('./src/multiplayer/adapter');
+const PixelConverter = require('./src/multiplayer/converter');
 const MapManager = require('./src/multiplayer/maps');
 
 /**
@@ -21,49 +21,49 @@ class PixSimAPI {
 
     /**
      * Open a PixSim API.
-     * @param {Express} app An HTTP `Server`.
+     * @param {Express} app An Express app.
      * @param {Server} server An HTTP `Server`.
      * @param {{path: string, logPath: string, logEverything: boolean}} options Additional options.
      * @param {string} options.path Path to open the API onto.
      * @param {string} options.logPath Directory for logging.
      * @param {boolean} options.logEverything To log or not to log everything.
      */
-    constructor(app, server, { path = '/pixsim-api/', mapsPath = './maps', logPath = './', logEverything = false } = {}) {
-        if (typeof app != 'function' || app == null || !app.hasOwnProperty('mkcalendar') || typeof app.mkcalendar != 'function') throw new TypeError('app must be an Express app'); // no way to check if it's Express app
-        if (!(server instanceof Server)) throw new TypeError('server must be an HTTP server');
+    constructor(app, server, { path = '/pixsim-api/', mapsPath = './src/multiplayer/maps', logPath = './', logEverything = false } = {}) {
+        if (typeof app != 'function' || app == null || !app.hasOwnProperty('mkcalendar') || typeof app.mkcalendar != 'function') throw new TypeError('"app" must be an Express app'); // no way to check if it's Express app
+        if (!(server instanceof Server)) throw new TypeError('"server" must be an HTTP server');
         if (path.endsWith('/') && path.length > 1) path = path.substring(0, path.length - 1);
         this.#logger = new Logger(logPath);
         if (typeof logEverything == 'boolean') this.logEverything = logEverything;
         console.info('Starting PixSim API');
         this.#logger.info('Starting PixSim API');
-        if (this.#loggerLogsEverything) this.#logger.debug(`Setting up Express HTTP middleware on '${path}'`);
+        if (this.#loggerLogsEverything) this.#logger.info(`Setting up Express HTTP middleware on '${path}'`);
         app.get(path, (req, res) => { res.writeHead(301, { location: '/pixsim-api/status' }); res.end(); });
         app.get(path + '/status', (req, res) => res.send({ active: this.active, starting: this.#starting, crashed: this.#crashed, time: Date.now() }));
-        // if (this.#loggerLogsEverything) this.#logger.debug('Creating MapManager instance');
-        // this.#mapManager = new MapManager(mapsPath);
-        // app.use(path + '/map', (req, res, next) => {
-        // });
-        if (this.#loggerLogsEverything) this.#logger.debug('Creating PixSimGridAdapter instance');
-        this.#gridAdapter = new PixSimGridAdapter(this.#logger);
-        // wait for keys and grid adapter to finish loading, then open the server
+        if (this.#loggerLogsEverything) this.#logger.info('Creating PixelConverter instance');
+        this.#gridAdapter = new PixelConverter(this.#logger, this.#loggerLogsEverything);
+        this.#gridAdapter.ready.then(() => { if (this.#loggerLogsEverything) this.#logger.info('PixelConverter ready') });
+        if (this.#loggerLogsEverything) this.#logger.info('Creating MapManager instance');
+        this.#mapManager = new MapManager(app, path + '/maps', mapsPath, this.#gridAdapter, this.#logger, this.#loggerLogsEverything);
+        this.#mapManager.ready.then(() => { if (this.#loggerLogsEverything) this.#logger.info('MapManager ready') });
+        // wait for everything to finish loading, then open the server
         new Promise(async (resolve, reject) => {
-            if (this.#loggerLogsEverything) this.#logger.debug('Generating RSA-OAEP keys');
+            if (this.#loggerLogsEverything) this.#logger.info('Generating RSA-OAEP keys');
             this.#keys = await webcrypto.subtle.generateKey({
                 name: "RSA-OAEP",
                 modulusLength: 2048,
                 publicExponent: new Uint8Array([1, 0, 1]),
                 hash: "SHA-256"
             }, false, ['encrypt', 'decrypt']);
-            if (this.#loggerLogsEverything) this.#logger.debug('RSA-OAEP keys generated');
+            if (this.#loggerLogsEverything) this.#logger.info('RSA-OAEP keys generated');
+            await this.#mapManager.ready;
             await this.#gridAdapter.ready;
-            if (this.#loggerLogsEverything) this.#logger.debug('PixSimGridAdapter ready');
             resolve();
         }).then(() => {
             if (this.#crashed) {
                 this.#logger.fatal('PixSimAPI initialization failed during startup.');
                 return;
             }
-            if (this.#loggerLogsEverything) this.#logger.debug('Setting up Socket.IO');
+            if (this.#loggerLogsEverything) this.#logger.info('Setting up Socket.IO');
             this.#io = new SocketIO(server, {
                 path: path + '/game',
                 cors: {
@@ -192,7 +192,7 @@ class PixSimAPI {
     }
 
     /**
-     * The instance of `PixSimGridAdapter`
+     * The instance of `PixelConverter`
      */
     get gridAdapter() {
         return this.#gridAdapter;
@@ -250,8 +250,8 @@ class PixSimHandler {
      * @param {PixSimAPI} api Parent `PixSimAPI` instance.
      */
     constructor(socket, api) {
-        if (!(socket instanceof Socket)) throw new TypeError('socket must be a socket.io socket');
-        if (!(api instanceof PixSimAPI)) throw new TypeError('api must be an instance of PixSimAPI');
+        if (!(socket instanceof Socket)) throw new TypeError('"socket" must be a socket.io socket');
+        if (!(api instanceof PixSimAPI)) throw new TypeError('"api" must be an instance of PixSimAPI');
         this.#socket = socket;
         this.#api = api;
         this.#socket.once('clientInfo', async (data) => {
@@ -295,7 +295,7 @@ class PixSimHandler {
     }
     #getPublicRooms(data) {
         if (typeof data != 'object' || data == null) return;
-        if (this.#api.logEverything) this.#api.logger.debug(`${this.debugId} requested list of public games`);
+        if (this.#api.logEverything) this.#api.logger.info(`${this.debugId} requested list of public games`);
         const rooms = Room.publicRooms(data.spectating);
         const games = [];
         for (const room of rooms) {
@@ -486,7 +486,7 @@ class Room {
      * @param {PixSimHandler} handler `PixSimHandler` instance to use as game host.
      */
     constructor(handler) {
-        if (!(handler instanceof PixSimHandler)) throw new TypeError('handler must be a PixSimHandler');
+        if (!(handler instanceof PixSimHandler)) throw new TypeError('"handler" must be a PixSimHandler');
         this.#host = handler;
         this.#api = this.#host.api;
         this.#id = randomBytes(4).toString('hex').toUpperCase();
