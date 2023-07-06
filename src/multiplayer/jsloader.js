@@ -98,7 +98,8 @@ class JSLoader {
                                 this.#loadTime = parseInt(raw[0]);
                                 this.#fromCache = true;
                                 this.#info(`Loading ${loadingUrl} from cache (${cacheFileName})`);
-                                parseScript(raw[1]);
+                                raw.shift();
+                                parseScript(raw.reduce((prev, curr) => prev + curr));
                                 return;
                             }
                             loadFromWeb();
