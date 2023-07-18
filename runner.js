@@ -8,8 +8,8 @@ const limiter = rateLimit({
     windowMs: 250,
     max: 25,
     handler: function (req, res, options) {
-        console.log('Rate limiting triggered by ' + req.ip || req.socket.remoteAddress);
-        PixSimHandler.logger.warn(`Potential DOS attack from ${req.ip || req.socket.remoteAddress}!`);
+        console.log('Rate limiting triggered by ' + req.ip ?? req.socket.remoteAddress);
+        PixSimHandler.logger.warn(`Potential DOS attack from ${req.ip ?? req.socket.remoteAddress}!`);
     }
 });
 app.use(cors({

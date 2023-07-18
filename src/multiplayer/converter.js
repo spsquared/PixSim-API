@@ -100,11 +100,18 @@ class PixelConverter {
      */
     convertGrid(grid, from, to) {
         if (this.#tables.has(from) && this.#tables.has(to)) {
-            let fromTable = this.#tables.get(from).from;
-            let toTable = this.#tables.get(to).to;
-            let newGrid = Buffer.from(grid);
-            for (let i = 0; i < grid.length; i += 2) {
-                newGrid[i] = toTable[fromTable[grid[i]]];
+            const fromTable = this.#tables.get(from).from;
+            const toTable = this.#tables.get(to).to;
+            const newGrid = Buffer.from(grid);
+            let i = 0;
+            while (i < grid.length) {
+                header = compressed[i++];
+                for (let j = 0; j < 8 && i < grid.length; j++) {
+                    newGrid[i] = toTable[fromTable[grid[i]]];
+                    if (header & 0b10000000 == 0) i++;
+                    i++;
+                    header <<= 1;
+                }
             }
             return newGrid;
         } else return grid;

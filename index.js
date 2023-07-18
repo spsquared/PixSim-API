@@ -83,7 +83,7 @@ class PixSimAPI {
                     return;
                 }
                 // connection DOS detection
-                const ip = socket.handshake.headers['x-forwarded-for'] ?? socket.handshake.address ?? socket.request.socket.remoteAddress ?? 'unknown';
+                const ip = socket.handshake.headers['x-forwarded-for'] ?? socket.handshake.address ?? socket.request.socket.remoteAddress ?? socket.client.conn.remoteAddress ?? 'un-ip';
                 recentConnections[ip] = (recentConnections[ip] ?? 0) + 1;
                 if (recentConnections[ip] > 3) {
                     if (!recentConnectionKicks[ip]) {
@@ -256,8 +256,8 @@ class PixSimHandler {
         this.#api = api;
         this.#socket.once('clientInfo', async (data) => {
             if (typeof data != 'object' || data === null) this.destroy('Invalid connection handshake data');
-            if (data.client != 'rps' && data.client != 'bps' && data.client != 'psp') this.destroy('Invalid connection handshake data');
-            this.#ip = socket.handshake.headers['x-forwarded-for'] ?? socket.handshake.address ?? '127.0.0.1';
+            if (data.client !== 'rps' && data.client !== 'bps' && data.client !== 'psp') this.destroy('Invalid connection handshake data');
+            this.#ip = socket.handshake.headers['x-forwarded-for'] ?? socket.handshake.address ?? socket.request.socket.remoteAddress ?? socket.client.conn.remoteAddress ?? 'un-ip';
             this.#username = data.username;
             this.#clientType = data.client;
             this.#api.logger.info(`Connection: ${this.debugId}`);
@@ -682,7 +682,7 @@ class Room {
         this.#host.sendToGameRoom('gridSize', { width: size.width, height: size.height });
     }
     #handleTick(tick) {
-        if (typeof tick != 'object' || tick == null || !Buffer.isBuffer(tick.grid) || tick.grid.length % 2 != 0 || tick.grid.length < 2
+        if (typeof tick != 'object' || tick == null || !Buffer.isBuffer(tick.grid)
                 || !Buffer.isBuffer(tick.teamGrid) || tick.teamGrid.length < 1
                 || !(tick.booleanGrids instanceof Array) || tick.booleanGrids.findIndex(g => !Buffer.isBuffer(g)) != -1
                 || typeof tick.origin != 'string' || tick.data == null || typeof tick.data != 'object'
