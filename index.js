@@ -4,6 +4,7 @@ const { Server: SocketIO, Socket } = require('socket.io');
 const Logger = require('./src/log');
 const PixelConverter = require('./src/multiplayer/converter');
 const MapManager = require('./src/multiplayer/maps');
+const ControllerManager = require('./src/multiplayer/controllers');
 
 /**
  * A full API opening on an HTTP server utilizing Socket.IO.
@@ -13,7 +14,7 @@ class PixSimAPI {
     #logger = null;
     #keys = null;
     #io = null;
-    #gridAdapter = null;
+    #pixelConverter = null;
     #mapManager = null;
     #active = false;
     #crashed = false;
@@ -40,10 +41,28 @@ class PixSimAPI {
         app.get(path, (req, res) => { res.writeHead(301, { location: '/pixsim-api/status' }); res.end(); });
         app.get(path + '/status', (req, res) => res.send({ active: this.active, starting: this.#starting, crashed: this.#crashed, time: Date.now() }));
         if (this.#loggerLogsEverything) this.#logger.info('Creating PixelConverter instance');
-        this.#gridAdapter = new PixelConverter(this.#logger, this.#loggerLogsEverything);
-        this.#gridAdapter.ready.then(() => { if (this.#loggerLogsEverything) this.#logger.info('PixelConverter ready') });
+        this.#pixelConverter = new PixelConverter([
+            {
+                id: 'rps',
+                url: 'https://raw.githubusercontent.com/spsquared/red-pixel-simulator/master/pixels.js',
+                fallback: 'https://red.pixelsimulator.repl.co/pixels.js',
+                extractor: 'let p = []; for (let i in pixels) p[i] = pixels[i].numId; return p;'
+            },
+            {
+                id: 'bps',
+                url: 'https://blue-pixel-simulator.maitiansha1.repl.co/pixelSetup.js',
+                fallback: 'https://blue.pixelsimulator.repl.co/pixelSetup.js',
+                extractor: 'return 1;'
+            },
+            // {
+            //     id: 'psp',
+            //     url: 'https://pixel-simulator-platformer-1.maitiansha1.repl.co/pixels.js',
+            //     extractor: 'let p = []; for (let i in PIXELS) p[PIXELS[i].id] = i; return p;'
+            // }
+        ], this.#logger, this.#loggerLogsEverything);
+        this.#pixelConverter.ready.then(() => { if (this.#loggerLogsEverything) this.#logger.info('PixelConverter ready') });
         if (this.#loggerLogsEverything) this.#logger.info('Creating MapManager instance');
-        this.#mapManager = new MapManager(app, path + '/maps', mapsPath, this.#gridAdapter, this.#logger, this.#loggerLogsEverything);
+        this.#mapManager = new MapManager(app, path + '/maps', mapsPath, this.#pixelConverter, this.#logger, this.#loggerLogsEverything);
         this.#mapManager.ready.then(() => { if (this.#loggerLogsEverything) this.#logger.info('MapManager ready') });
         // wait for everything to finish loading, then open the server
         new Promise(async (resolve, reject) => {
@@ -56,7 +75,7 @@ class PixSimAPI {
             }, false, ['encrypt', 'decrypt']);
             if (this.#loggerLogsEverything) this.#logger.info('RSA-OAEP keys generated');
             await this.#mapManager.ready;
-            await this.#gridAdapter.ready;
+            await this.#pixelConverter.ready;
             resolve();
         }).then(() => {
             if (this.#crashed) {
@@ -194,8 +213,8 @@ class PixSimAPI {
     /**
      * The instance of `PixelConverter`
      */
-    get gridAdapter() {
-        return this.#gridAdapter;
+    get pixelConverter() {
+        return this.#pixelConverter;
     }
 
     set logEverything(bool) {
@@ -476,7 +495,6 @@ class Room {
     #teamSize = 1;
     #spectators = new Set();
     #allowSpectators = true;
-    #running = false;
     #open = true;
     #public = true;
     #bannedPlayers = [];
@@ -700,11 +718,11 @@ class Room {
                 conversion = conversionCache.get(handler.clientType);
             } else {
                 conversion = {
-                    grid: this.#api.gridAdapter.convertGrid(tick.grid, this.#host.clientType, handler.clientType),
+                    grid: this.#api.pixelConverter.convertGrid(tick.grid, this.#host.clientType, handler.clientType),
                     pixels: tick.data.teamPixelAmounts.map(arr => {
                         let mappedArr = [];
                         for (let n in arr) {
-                            if (arr[n] !== 0) mappedArr[this.#api.gridAdapter.convertSingle(n, this.#host.clientType, handler.clientType)] = arr[n];
+                            if (arr[n] !== 0) mappedArr[this.#api.pixelConverter.convertSingle(n, this.#host.clientType, handler.clientType)] = arr[n];
                         }
                         return mappedArr;
                     })
@@ -750,7 +768,7 @@ class Room {
                     return;
                 }
                 let newdata = input.data;
-                if (input.data[5] != -1) newdata[5] = this.#api.gridAdapter.convertSingle(input.data[5], handler.clientType, this.#host.clientType);
+                if (input.data[5] != -1) newdata[5] = this.#api.pixelConverter.convertSingle(input.data[5], handler.clientType, this.#host.clientType);
                 if (forward) {
                     this.#host.send('input', { type: input.type, team: team, data: newdata });
                 } else {
@@ -763,7 +781,7 @@ class Room {
                     handler.destroy('Invalid game tick data', true);
                     return;
                 }
-                let inputGrid = this.#api.gridAdapter.convertGrid(Buffer.from(input.data.slice(1)), handler.clientType, this.#host.clientType);
+                let inputGrid = this.#api.pixelConverter.convertGrid(Buffer.from(input.data.slice(1)), handler.clientType, this.#host.clientType);
                 if (forward) {
                     this.#host.send('input', { type: input.type, team: team, data: [input.data[0], ...inputGrid] });
                 } else {
@@ -908,3 +926,4 @@ class Room {
 module.exports.PixSimAPI = PixSimAPI;
 module.exports.PixSimHandler = PixSimHandler;
 module.exports.Room = Room;
+module.exports = PixSimAPI;

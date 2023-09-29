@@ -3,7 +3,7 @@ const app = express();
 const server = require('http').Server(app);
 const cors = require('cors');
 const rateLimit = require('express-rate-limit');
-const { PixSimAPI } = require('./index');
+const PixSimAPI = require('./index');
 const limiter = rateLimit({
     windowMs: 250,
     max: 25,

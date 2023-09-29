@@ -54,8 +54,9 @@ class JSLoader {
                 this.#worker.on('online', () => {
                     let handle = (result) => {
                         this.#worker.off('message', handle);
+                        this.#worker.off('error', handleLoadError);
                         this.#running = true;
-                        this.#debug(`Loaded ${loadingUrl} in ${Math.round(performance.now() - loadStart)}ms`);
+                        this.#info(`Loaded ${loadingUrl} in ${Math.round(performance.now() - loadStart)}ms`);
                         readyResolve();
                     };
                     this.#worker.on('message', handle);

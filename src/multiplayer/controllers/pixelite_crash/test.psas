@@ -1,0 +1,8 @@
+PRINT "test script please ignore"
+WRITE x 0
+WHILE <x> < 10
+    SETPX <x> 2 {sand}
+    WAIT 500
+    WRITE x <x> + 1
+END
+PRINT "there should be sand now"

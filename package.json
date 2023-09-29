@@ -8,7 +8,7 @@
     "run": "node runner.js"
   },
   "keywords": [],
-  "author": "sp^2",
+  "author": "spsquared",
   "license": "MIT",
   "dependencies": {
     "@types/node": "^18.0.6",

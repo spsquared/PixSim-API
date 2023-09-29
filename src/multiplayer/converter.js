@@ -12,69 +12,70 @@ class PixelConverter {
 
     /**
      * Create a new `PixelConverter`, loading and parsing the remote files. Not necessary (and inefficient) to do more than once.
+     * @param {Array<PixelFormat>} formats List of formats to load.
      * @param {Logger} logger `Logger` instance.
      * @param {boolean} logEverything To log or not to log everything.
      */
-    constructor(logger, logEverything = false) {
-        const redpixelLoader = new JSLoader('https://raw.githubusercontent.com/definitely-nobody-is-here/red-pixel-simulator/master/pixels.js', {
-            fallback: 'https://red.pixelsimulator.repl.co/index.js',
-            logger: logger,
-            allowInsecure: true
-        });
-        const bluepixelLoader = new JSLoader('https://blue-pixel-simulator.maitiansha1.repl.co/pixelSetup.js', {
-            fallback: 'https://blue.pixelsimulator.repl.co/pixelSetup.js',
-            logger: logger,
-            allowInsecure: true
-        });
-        const platformerLoader = new JSLoader('https://pixel-simulator-platformer-1.maitiansha1.repl.co/pixels.js', {
-            // fallback: '',
-            logger: logger,
-            allowInsecure: true
-        });
-        this.#ready = new Promise(async (resolve, reject) => {
-            const rawLookup = fs.readFileSync(__dirname + '/pixsimpixelslookup.csv', 'utf8');
-            const lookupTable = [];
-            rawLookup.split('\n').forEach((line, i) => {
-                lookupTable[i] = line.split(',');
-            });
-            let extract = (gid, loader, script) => {
-                return new Promise(async (resolve, reject) => {
-                    await loader.ready;
-                    if (logEverything) {
-                        console.info('[PixelConverter] Extracting pixel IDs for ' + gid);
-                        logger.info('[PixelConverter] Extracting pixel IDs for ' + gid);
+    constructor(formats, logger, logEverything = false) {
+        const loaders = [];
+        for (let i in formats) {
+            loaders.push(new JSLoader(formats[i].url, {
+                fallback: formats[i].fallback,
+                logger: logger,
+                allowInsecure: true
+            }));
+        }
+        // IMPORTANT
+        // IMPORTANT
+        // IMPORTANT
+        // IMPORTANT
+        // IMPORTANT
+        // ADD LOOKUP IDS FOR STANDARD IDS BUT NOT NUMERICAL IDS
+        const rawLookup = fs.readFileSync(__dirname + '/pixsimpixelslookup.csv', 'utf8');
+        const lookupTable = rawLookup.replaceAll('\r', '').split('\n').map((line) => line.split(','));
+        let extract = (gid, loader, script) => {
+            return new Promise(async (resolve, reject) => {
+                await loader.ready;
+                if (logEverything) {
+                    console.info('[PixelConverter] Extracting pixel IDs for ' + gid);
+                    logger.info('[PixelConverter] Extracting pixel IDs for ' + gid);
+                }
+                const pixels = await loader.execute(script);
+                const from = new Uint8ClampedArray(Buffer.alloc(256, 0xff));
+                const to = new Uint8ClampedArray(Buffer.alloc(256, 0xff));
+                const idfrom = new Map();
+                const idto = new Map();
+                const col = lookupTable[0].findIndex((header) => header.toLowerCase() == gid);
+                if (col >= 0) for (let id in pixels) {
+                    const row = lookupTable.find((row) => row[col] == id);
+                    if (row) {
+                        let id2 = parseInt(row[0]);
+                        from[pixels[id]] = id2;
+                        to[id2] = pixels[id];
+                        idfrom.set(id, id2);
+                        idto.set(id2, id);
                     }
-                    const pixels = await loader.execute(script);
-                    const from = new Uint8ClampedArray(Buffer.alloc(256, 0xff));
-                    const to = new Uint8ClampedArray(Buffer.alloc(256, 0xff));
-                    const idfrom = new Map();
-                    const idto = new Map();
-                    for (let id in pixels) {
-                        let lookup = lookupTable.find((v) => v[1] == id);
-                        if (lookup) {
-                            let id2 = parseInt(lookup[0]);
-                            from[pixels[id]] = id2;
-                            to[id2] = pixels[id];
-                            idfrom.set(id, id2);
-                            idto.set(id2, id);
-                        }
-                    }
-                    this.#tables.set(gid, {
-                        from: from,
-                        to: to
-                    });
-                    this.#idTables.set(gid, {
-                        from: idfrom,
-                        to: idto
-                    });
-                    await loader.terminate();
-                    resolve();
+                }
+                this.#tables.set(gid, {
+                    from: from,
+                    to: to
                 });
-            };
-            // loads sequentially, but probably doesn't make too big of a difference
-            await extract('rps', redpixelLoader, 'let p = []; for (let i in pixels) p[i] = pixels[i].numId; return p;');
-            await extract('bps', bluepixelLoader, 'return 1;');
-            // await extract('psp', platformerLoader, 'let p = []; for (let i in PIXELS) p[PIXELS[i].id] = i; return p;');
+                this.#idTables.set(gid, {
+                    from: idfrom,
+                    to: idto
+                });
+                await loader.terminate();
+                resolve();
+            });
+        };
+        const promises = [];
+        for (let i in formats) {
+            promises.push(extract(formats[i].id, loaders[i], formats[i].extractor));
+        }
+        this.#ready = new Promise(async (resolve, reject) => {
+            for (let i in promises) {
+                await promises[i];
+            }
             resolve();
         });
     }
@@ -138,4 +139,17 @@ class PixelConverter {
     }
 }
 
+// It's pretty clear I don't know what I'm doing, especially trying to do this without TypeScript
+/**
+ * Information for a format in a `PixelConverter`.
+ * @typedef {{id: string, url: string, fallback: url|undefined, extractor: JSExpression}} PixelFormat
+ * @typedef {string} JSExpression
+ * @param id Internal ID.
+ * @param url Primary URL to load format from.
+ * @param fallback Secondary URL to load format from, in case primary fails.
+ * @param extractor A JavaScript expression to execute within the context of the loader to extract pixels.
+ */
+
+module.exports.PixelConverter = PixelConverter;
+module.exports.PixelFormat = this.PixelFormat;
 module.exports = PixelConverter;
