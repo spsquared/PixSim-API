@@ -1,0 +1,32 @@
+PRINT oof "(implicit)" string
+WRITE x 0
+WHILE <x><10
+    SETPX <x> 2 {pusher_down}
+    WAIT 500
+    WRITE x <x>+1
+END
+PRINT there should be pushers now
+IF <x>==10
+    PRINT x is 10 and the loop worked
+ELIF <x><0
+    PRINT AAAAAAAAAAAAAAAAA
+ELSE
+    PRINT oh no borken
+END
+
+// Compiled version for rps
+// console.log("oof","(implicit)","string");
+// setVariable("x",0);
+// while(getVariable("x")<10){
+// setPixel(getVariable("x"),2,"piston_down");
+// wait(500);
+// setVariable("x",getVariable("x")+1);
+// }
+// console.log("there","should","be","pushers","now");
+// if(getVariable("x")===10){
+// console.log("x","is",10,"and","the","loop","worked");
+// }else if(getVariable("x")<0){
+// console.log("AAAAAAAAAAAAAAAAA");
+// }else{
+// console.log("oh","no","borken");
+// }

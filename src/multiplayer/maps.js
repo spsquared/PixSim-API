@@ -58,7 +58,7 @@ class MapManager {
             for (let dir of dirList) {
                 if (fs.lstatSync(path.resolve(filePath, dir)).isDirectory()) {
                     mapList.push(...fs.readdirSync(path.resolve(filePath, dir)).filter((map) => {
-                        return fs.lstatSync(path.resolve(filePath, dir, map)).isFile();
+                        return fs.lstatSync(path.resolve(filePath, dir, map)).isFile() && map.endsWith('.json');
                     }).map((map) => {
                         return path.join(dir, map);
                     }));
@@ -71,19 +71,20 @@ class MapManager {
                 if (map.includes(' ')) this.#warn(`"${map}" includes whitespace characters and will be mapped to "${map.replaceAll(' ', '-').replaceAll('.json', '')}"`);
                 const raw = fs.readFileSync(path.resolve(filePath, map));
                 try {
+                    if (logEverything) this.#debug(`Loading "${map}"`);
                     this.#addMap(map.replaceAll(' ', '-').replaceAll('.json', ''), JSON.parse(raw));
+                    if (logEverything) this.#debug(`Loaded "${map}" in ${Math.round(performance.now() - start)}ms`);
                 } catch (err) {
                     this.#error(`Failed to load "${map}"`);
                     this.#error(err.stack);
                 }
-                if (logEverything) this.#debug(`Loaded "${map}" in ${Math.round(performance.now() - start)}ms`);
             }
             resolve();
         });
     }
 
     #addMap(name, map) {
-        let [gamemode, id] = name.split('/').split('\\');
+        let [gamemode, id] = name.split('/').map((e) => e.split('\\'));
         // oh no i have to write parsers and generators for all the formats
         // tokenize save code into size and grid
         // I HAVE NO IDEA HOW THE BPS SAVE CODE FORMAT WORKS AAAAAA ROTATION GRID (just slap _left and stuff onto it but still really hard)
@@ -98,7 +99,7 @@ class MapManager {
         // tokens split into pairs of id and amount?
         switch (map.format) {
             case 'rps':
-                
+
                 break;
             case 'bps':
                 break;
@@ -116,7 +117,7 @@ class MapManager {
     getMap(name, format) {
         // get a map with name
     }
-    
+
     /**
      * A `Promise` representing when all maps detected have been loaded and converted.
      */

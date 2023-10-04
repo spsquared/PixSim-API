@@ -24,15 +24,16 @@ class JSLoader {
     /**
      * Parse a new JavaScript file from the web.
      * @param {string} url Primary URL to fetch (must start with "https://").
-     * @param {{fallback: string, logger: Logger, cache: string, onerror: function, allowCache: boolean, allowInsecure: boolean}} options Additional options.
+     * @param {{fallback: string, logger: Logger, logEverything: boolean, cache: string, onerror: function, allowCache: boolean, allowInsecure: boolean}} options Additional options.
      * @param options.fallback secondary URL in case the primary URL fails to fetch.
      * @param options.logger `Logger` instance for logging.
+     * @param options.logEverything To log or not to log everything.
      * @param options.cache Filepath to the cache directory.
      * @param options.onerror Handler called when an error is thrown within the context. By default an error is thrown.
      * @param options.allowCache Allow using cached files.
      * @param options.allowInsecure Allow using an insecure HTTP request when the HTTPS request fails. *JSLoader still is not sandboxed even with this option off!*
      */
-    constructor(url, { fallback: fallbackUrl, logger, cache: cacheDir = './filecache/', onerror = (err) => { this.#error(err); }, allowCache = true, allowInsecure = false } = {}) {
+    constructor(url, { fallback: fallbackUrl, logger, logEverything = false, cache: cacheDir = './filecache/', onerror = (err) => { this.#error(err); }, allowCache = true, allowInsecure = false } = {}) {
         if (typeof url != 'string') throw new TypeError('"url" must be a string');
         if (!url.startsWith('http://') && !url.startsWith('https://')) throw new Error('"url" has to be an HTTP/HTTPS url');
         if (typeof fallbackUrl != 'string') fallbackUrl = undefined;
@@ -56,7 +57,7 @@ class JSLoader {
                         this.#worker.off('message', handle);
                         this.#worker.off('error', handleLoadError);
                         this.#running = true;
-                        this.#info(`Loaded ${loadingUrl} in ${Math.round(performance.now() - loadStart)}ms`);
+                        if (logEverything) this.#debug(`Loaded ${loadingUrl} in ${Math.round(performance.now() - loadStart)}ms`);
                         readyResolve();
                     };
                     this.#worker.on('message', handle);
@@ -70,7 +71,7 @@ class JSLoader {
                 this.minify(script).then((minifiedScript) => {
                     fs.writeFile(cacheFileName, this.#loadTime + '\n' + minifiedScript, (err) => {
                         if (err) this.#error(err.stack);
-                        else this.#info(`Wrote "${cacheFileName}"`);
+                        else if (logEverything) this.#debug(`Wrote "${cacheFileName}"`);
                     });
                     parseScript(minifiedScript);
                 }).catch((err) => this.#error(err.stack));

@@ -16,6 +16,7 @@ class PixSimAPI {
     #io = null;
     #pixelConverter = null;
     #mapManager = null;
+    #controllerManager = null;
     #active = false;
     #crashed = false;
     #starting = true;
@@ -29,7 +30,7 @@ class PixSimAPI {
      * @param {string} options.logPath Directory for logging.
      * @param {boolean} options.logEverything To log or not to log everything.
      */
-    constructor(app, server, { path = '/pixsim-api/', mapsPath = './src/multiplayer/maps', logPath = './', logEverything = false } = {}) {
+    constructor(app, server, { path = '/pixsim-api/', mapsPath = './src/multiplayer/maps', controllersPath = './src/multiplayer/controllers', logPath = './', logEverything = false } = {}) {
         if (typeof app != 'function' || app == null || !app.hasOwnProperty('mkcalendar') || typeof app.mkcalendar != 'function') throw new TypeError('"app" must be an Express app'); // no way to check if it's Express app
         if (!(server instanceof Server)) throw new TypeError('"server" must be an HTTP server');
         if (path.endsWith('/') && path.length > 1) path = path.substring(0, path.length - 1);
@@ -60,10 +61,13 @@ class PixSimAPI {
             //     extractor: 'let p = []; for (let i in PIXELS) p[PIXELS[i].id] = i; return p;'
             // }
         ], this.#logger, this.#loggerLogsEverything);
-        this.#pixelConverter.ready.then(() => { if (this.#loggerLogsEverything) this.#logger.info('PixelConverter ready') });
+        this.#pixelConverter.ready.then(() => { if (this.#loggerLogsEverything) this.#logger.info('PixelConverter ready'); });
         if (this.#loggerLogsEverything) this.#logger.info('Creating MapManager instance');
         this.#mapManager = new MapManager(app, path + '/maps', mapsPath, this.#pixelConverter, this.#logger, this.#loggerLogsEverything);
-        this.#mapManager.ready.then(() => { if (this.#loggerLogsEverything) this.#logger.info('MapManager ready') });
+        this.#mapManager.ready.then(() => { if (this.#loggerLogsEverything) this.#logger.info('MapManager ready'); });
+        if (this.#loggerLogsEverything) this.#logger.info('Creating ControllerManager instance');
+        this.#controllerManager = new ControllerManager(app, path + '/controllers/', controllersPath, this.#pixelConverter, this.#logger, this.#loggerLogsEverything);
+        this.#controllerManager.ready.then(() => { if (this.#loggerLogsEverything) this.#logger.info('ControllerManager ready'); });
         // wait for everything to finish loading, then open the server
         new Promise(async (resolve, reject) => {
             if (this.#loggerLogsEverything) this.#logger.info('Generating RSA-OAEP keys');
@@ -274,8 +278,8 @@ class PixSimHandler {
         this.#socket = socket;
         this.#api = api;
         this.#socket.once('clientInfo', async (data) => {
-            if (typeof data != 'object' || data === null) this.destroy('Invalid connection handshake data');
-            if (data.client !== 'rps' && data.client !== 'bps' && data.client !== 'psp') this.destroy('Invalid connection handshake data');
+            if (typeof data != 'object' || data === null) this.destroy('Invalid connection handshake data - bad data');
+            if (data.client !== 'rps' && data.client !== 'bps' && data.client !== 'psp') this.destroy('Invalid connection handshake data - bad client');
             this.#ip = socket.handshake.headers['x-forwarded-for'] ?? socket.handshake.address ?? socket.request.socket.remoteAddress ?? socket.client.conn.remoteAddress ?? 'un-ip';
             this.#username = data.username;
             this.#clientType = data.client;
@@ -701,10 +705,10 @@ class Room {
     }
     #handleTick(tick) {
         if (typeof tick != 'object' || tick == null || !Buffer.isBuffer(tick.grid)
-                || !Buffer.isBuffer(tick.teamGrid) || tick.teamGrid.length < 1
-                || !(tick.booleanGrids instanceof Array) || tick.booleanGrids.findIndex(g => !Buffer.isBuffer(g)) != -1
-                || typeof tick.origin != 'string' || tick.data == null || typeof tick.data != 'object'
-                || typeof tick.data.tick != 'number' || !(tick.data.teamPixelAmounts instanceof Array)) {
+            || !Buffer.isBuffer(tick.teamGrid) || tick.teamGrid.length < 1
+            || !(tick.booleanGrids instanceof Array) || tick.booleanGrids.findIndex(g => !Buffer.isBuffer(g)) != -1
+            || typeof tick.origin != 'string' || tick.data == null || typeof tick.data != 'object'
+            || typeof tick.data.tick != 'number' || !(tick.data.teamPixelAmounts instanceof Array)) {
             console.warn(`${this.#host.debugId} kicked for sending invalid game tick data`);
             this.#host.destroy('Invalid game tick data', true);
             return;

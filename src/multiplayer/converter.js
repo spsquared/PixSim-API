@@ -22,60 +22,70 @@ class PixelConverter {
             loaders.push(new JSLoader(formats[i].url, {
                 fallback: formats[i].fallback,
                 logger: logger,
+                logEverything, logEverything,
                 allowInsecure: true
             }));
         }
-        // IMPORTANT
-        // IMPORTANT
-        // IMPORTANT
-        // IMPORTANT
-        // IMPORTANT
-        // ADD LOOKUP IDS FOR STANDARD IDS BUT NOT NUMERICAL IDS
         const rawLookup = fs.readFileSync(__dirname + '/pixsimpixelslookup.csv', 'utf8');
         const lookupTable = rawLookup.replaceAll('\r', '').split('\n').map((line) => line.split(','));
-        let extract = (gid, loader, script) => {
-            return new Promise(async (resolve, reject) => {
-                await loader.ready;
-                if (logEverything) {
-                    console.info('[PixelConverter] Extracting pixel IDs for ' + gid);
-                    logger.info('[PixelConverter] Extracting pixel IDs for ' + gid);
+        let extract = async (gid, loader, script) => {
+            await loader.ready;
+            if (logEverything) {
+                console.info('[PixelConverter] Extracting pixel IDs for ' + gid);
+                logger.info('[PixelConverter] Extracting pixel IDs for ' + gid);
+            }
+            const pixels = await loader.execute(script);
+            const from = new Uint8ClampedArray(Buffer.alloc(256, 0xff));
+            const to = new Uint8ClampedArray(Buffer.alloc(256, 0xff));
+            const idfrom = new Map();
+            const idto = new Map();
+            const col = lookupTable[0].findIndex((header) => header.toLowerCase() == gid);
+            if (col >= 0) for (let id in pixels) {
+                const row = lookupTable.find((row) => row[col] == id);
+                if (row) {
+                    let id2 = parseInt(row[0]);
+                    from[pixels[id]] = id2;
+                    to[id2] = pixels[id];
+                    idfrom.set(id, id2);
+                    idto.set(id2, id);
                 }
-                const pixels = await loader.execute(script);
-                const from = new Uint8ClampedArray(Buffer.alloc(256, 0xff));
-                const to = new Uint8ClampedArray(Buffer.alloc(256, 0xff));
-                const idfrom = new Map();
-                const idto = new Map();
-                const col = lookupTable[0].findIndex((header) => header.toLowerCase() == gid);
-                if (col >= 0) for (let id in pixels) {
-                    const row = lookupTable.find((row) => row[col] == id);
-                    if (row) {
-                        let id2 = parseInt(row[0]);
-                        from[pixels[id]] = id2;
-                        to[id2] = pixels[id];
-                        idfrom.set(id, id2);
-                        idto.set(id2, id);
-                    }
-                }
-                this.#tables.set(gid, {
-                    from: from,
-                    to: to
-                });
-                this.#idTables.set(gid, {
-                    from: idfrom,
-                    to: idto
-                });
-                await loader.terminate();
-                resolve();
+            }
+            this.#tables.set(gid, {
+                from: from,
+                to: to
             });
+            this.#idTables.set(gid, {
+                from: idfrom,
+                to: idto
+            });
+            if (logEverything) logger.info('[PixelConverter] Extracted pixel IDs for ' + gid);
+            await loader.terminate();
         };
         const promises = [];
         for (let i in formats) {
             promises.push(extract(formats[i].id, loaders[i], formats[i].extractor));
         }
+        promises.push(new Promise((resolve, reject) => {
+            const idfrom = new Map();
+            const idto = new Map();
+            const col = lookupTable[0].findIndex((header) => header.toLowerCase() == 'standard');
+            if (col >= 0) for (const row of lookupTable) {
+                let id = parseInt(row[0]);
+                idfrom.set(row[col], id);
+                idto.set(id, row[col]);
+            }
+            this.#idTables.set('standard', {
+                from: idfrom,
+                to: idto
+            });
+            if (logEverything) logger.info('[PixelConverter] Extracted pixel IDs for PixSim Standard');
+            resolve();
+        }));
         this.#ready = new Promise(async (resolve, reject) => {
             for (let i in promises) {
                 await promises[i];
             }
+            if (logEverything) logger.info('[PixelConverter] All pixel IDs extracted');
             resolve();
         });
     }
@@ -119,7 +129,7 @@ class PixelConverter {
     }
 
     /**
-     * 
+     * Remap a pixel String ID as according to the PixSim API specifications.
      * @param {string} id Incoming string ID to convert.
      * @param {string} from ID map of incoming ID.
      * @param {string} to ID map to convert to.
@@ -129,6 +139,13 @@ class PixelConverter {
         if (this.#idTables.has(from) && this.#idTables.has(to)) {
             return this.#idTables.get(to).to.get(this.#idTables.get(from).from.get(id));
         } else return id;
+    }
+
+    /**
+     * An `Array<string>` containing the supported formats that can be mapped.
+     */
+    get conversionFormats() {
+        return Array.from(this.#tables.keys());
     }
 
     /**

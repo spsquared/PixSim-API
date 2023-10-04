@@ -22,7 +22,7 @@ class Logger {
                 let dirPath = fspath.resolve(path, 'logs/');
                 if (!fs.existsSync(dirPath)) fs.mkdirSync(dirPath);
                 let fileCount = fs.readdirSync(dirPath).length;
-                fs.renameSync(filePath, fspath.resolve(dirPath,`log-${fileCount}.log`));
+                fs.renameSync(filePath, fspath.resolve(dirPath, `log-${fileCount}.log`));
             }
             this.#file = fs.openSync(filePath, 'a');
             console.info('Logger instance created');
