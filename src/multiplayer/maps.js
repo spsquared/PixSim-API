@@ -29,25 +29,31 @@ class MapManager {
         if (!(converter instanceof PixelConverter)) throw new TypeError('"converter" must be an instance of PixelConverter');
         this.#pixelConverter = converter;
         if (logger instanceof Logger) this.#logger = logger;
-        app.get(httpPath + 'list/*', (req, res) => {
-            let gameMode = req.path.replace(httpPath + 'list/', '').replace('/', '');
-            if (this.somethingthatdoesntexist) {
-                res.send(this.anotherthingthatdoesntexist);
+        app.get(httpPath + '/list/*', (req, res) => {
+            let gameMode = req.path.replace(httpPath + '/list/', '').replace('/', '');
+            let list = this.mapList(gameMode);
+            if (list.length > 0) {
+                res.send(list);
+                if (logEverything) this.#debug(`Request for list ${gameMode} success`);
                 return;
             }
             res.sendStatus(404);
+            if (logEverything) this.#debug(`Request for list ${gameMode} fail - 404`);
         });
         app.get(httpPath + '/*', (req, res) => {
-            let map = req.path.replace(httpPath, '').replace('/', '');
             let format = req.query.format;
+            let [gameMode, map] = req.path.replace(httpPath + '/', '').split('/');
             if (format != 'rps' && format != 'bps' && format != 'psp') {
                 res.sendStatus(400);
+                if (logEverything) this.#debug(`Request for ${gameMode}/${map} fail - 400`);
                 return;
             }
-            if (this.yetanothernonexistentthing) {
-                res.send(this.imrunningoutofnamesfortheseproperties);
+            if (this.hasMap(gameMode, map)) {
+                res.send(this.getMap(gameMode, map, format));
+                if (logEverything) this.#debug(`Request for ${gameMode}/${map} success`);
                 return;
             }
+            if (logEverything) this.#debug(`Request for ${gameMode}/${map} fail - 404`);
             res.sendStatus(404);
         });
         this.#ready = new Promise(async (resolve, reject) => {
@@ -84,7 +90,7 @@ class MapManager {
     }
 
     #addMap(name, map) {
-        let [gamemode, id] = name.split('/').map((e) => e.split('\\'));
+        let [gameMode, id] = name.split('/').map((e) => e.split('\\'));
         // oh no i have to write parsers and generators for all the formats
         // tokenize save code into size and grid
         // I HAVE NO IDEA HOW THE BPS SAVE CODE FORMAT WORKS AAAAAA ROTATION GRID (just slap _left and stuff onto it but still really hard)
@@ -109,13 +115,16 @@ class MapManager {
     }
 
     mapList(gameMode) {
-        // return array of map names for a game mode
+        if (this.#maps.has(gameMode)) return Array.from(this.#maps.get(gameMode).keys());
+        else return [];
     }
-    existsMap(name) {
-        // check if a map exists
+    hasMap(gameMode, name) {
+        if (this.#maps.has(gameMode) && this.#maps.get(gameMode).has(name)) return true;
+        return false;
     }
-    getMap(name, format) {
-        // get a map with name
+    getMap(gameMode, name, format) {
+        if (!this.hasMap(gameMode, name)) return null;
+        return this.#maps.get(gameMode).get(name).get(format) ?? null;
     }
 
     /**

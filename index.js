@@ -63,7 +63,7 @@ class PixSimAPI {
         ], this.#logger, this.#loggerLogsEverything);
         this.#pixelConverter.ready.then(() => { if (this.#loggerLogsEverything) this.#logger.info('PixelConverter ready'); });
         if (this.#loggerLogsEverything) this.#logger.info('Creating MapManager instance');
-        this.#mapManager = new MapManager(app, path + '/maps', mapsPath, this.#pixelConverter, this.#logger, this.#loggerLogsEverything);
+        this.#mapManager = new MapManager(app, path + '/maps/', mapsPath, this.#pixelConverter, this.#logger, this.#loggerLogsEverything);
         this.#mapManager.ready.then(() => { if (this.#loggerLogsEverything) this.#logger.info('MapManager ready'); });
         if (this.#loggerLogsEverything) this.#logger.info('Creating ControllerManager instance');
         this.#controllerManager = new ControllerManager(app, path + '/controllers/', controllersPath, this.#pixelConverter, this.#logger, this.#loggerLogsEverything);

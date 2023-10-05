@@ -36,11 +36,20 @@ class ControllerManager {
         if (logger instanceof Logger) this.#logger = logger;
         this.#compiler = new PixSimAssemblyCompiler(this.#pixelConverter);
         app.get(httpPath + '/*', (req, res) => {
-            let controller = req.path.replace(httpPath, '').replace('/', '');
-            if (this.somethingthatdoesntexist) {
-                res.send(this.anotherthingthatdoesntexist);
+            let scriptName = req.path.replace(httpPath + '/', '');
+            let format = req.query.format;
+            if (format != 'rps' && format != 'bps' && format != 'psp') {
+                res.sendStatus(400);
+                if (logEverything) this.#debug(`Request for ${scriptName} fail - 400`);
                 return;
             }
+            let script = this.getScript(scriptName, format);
+            if (script.length > 0) {
+                res.send(script);
+                if (logEverything) this.#debug(`Request for ${scriptName} success`);
+                return;
+            }
+            if (logEverything) this.#debug(`Request for ${scriptName} fail - 404`);
             res.sendStatus(404);
         });
         this.#ready = new Promise(async (resolve, reject) => {
@@ -65,7 +74,7 @@ class ControllerManager {
                 const raw = fs.readFileSync(path.resolve(filePath, script), 'utf8');
                 try {
                     if (logEverything) this.#debug(`Compiling "${script}"`);
-                    this.#scripts.set(script.replaceAll(' ', '-').replaceAll('.pxasm', ''), await this.#compiler.compile(raw))
+                    this.#scripts.set(script.replaceAll(' ', '-').replaceAll('\\', '/').replaceAll('.pxasm', ''), await this.#compiler.compile(raw))
                     if (logEverything) this.#debug(`Compiled "${script}" in ${Math.round(performance.now() - start)}ms`);
                 } catch (err) {
                     if (err instanceof PixSimAssemblySyntaxError) {
@@ -79,6 +88,14 @@ class ControllerManager {
             }
             resolve();
         });
+    }
+
+    hasScript(path) {
+        return this.#scripts.has(path);
+    }
+    getScript(path, format) {
+        if (!this.#scripts.has(path)) return '';
+        return this.#scripts.get(path).get(format) ?? '';
     }
 
     /**
