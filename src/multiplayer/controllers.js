@@ -3,12 +3,8 @@ const Logger = require("../log");
 const PixelConverter = require("./converter");
 const path = require("path");
 
-// compiles the script into javascript
-// uses converter to replace ids with target ids
-// labels wrap everything below it into a function
-
 /**
- * 
+ * ControllerManager handles compiling and serving controller scripts from a directory
  */
 class ControllerManager {
     #ready;
@@ -205,7 +201,7 @@ class PixSimAssemblyCompiler {
                                 currStr = doublechar;
                                 currLayer.push(currStr);
                                 i++;
-                            } else if (/[+\-*\/%^><!][\d<~!()]/.test(doublechar)) {
+                            } else if (/[+\-*\/%^><!][\d<~!()]/.test(doublechar) || /[+\-*\/%^><!]/.test(char)) {
                                 currStr = char;
                                 currLayer.push(currStr);
                             }
@@ -239,12 +235,12 @@ class PixSimAssemblyCompiler {
                         outputLine = 'if(';
                         break;
                     case 'ELSE':
-                        if (openBlockStack.length == 0 || !openBlockStack[openBlockStack.length - 1]) throw new PixSimAssemblySyntaxError(`Illegal ELSE switch on line ${lineNo + 1}`);
+                        if (openBlockStack.length == 0 || !openBlockStack[openBlockStack.length - 1]) throw new PixSimAssemblySyntaxError(`Illegal ELSE switch (line ${lineNo + 1})`);
                         outputLine = '}else{';
                         break;
                     case 'ELIF':
                         isOpenBlock = true;
-                        if (openBlockStack.length == 0 || !openBlockStack[openBlockStack.length - 1]) throw new PixSimAssemblySyntaxError(`Illegal ELIF switch on line ${lineNo + 1}`);
+                        if (openBlockStack.length == 0 || !openBlockStack[openBlockStack.length - 1]) throw new PixSimAssemblySyntaxError(`Illegal ELIF switch (line ${lineNo + 1})`);
                         outputLine = '}else if(';
                         break;
                     case 'WHILE':
@@ -258,40 +254,48 @@ class PixSimAssemblyCompiler {
                         throw new Error('FOR instruction not implemented yet');
                         break;
                     case 'BREAK':
-                        if (openBlockStack.length == 0 || openBlockStack[openBlockStack.length - 1]) throw new PixSimAssemblySyntaxError(`Illegal BREAK instruction on line ${lineNo + 1}`);
+                        if (openBlockStack.length == 0 || openBlockStack[openBlockStack.length - 1]) throw new PixSimAssemblySyntaxError(`Illegal BREAK instruction (line ${lineNo + 1})`);
                         outputLine += 'break;';
                         break;
                     case 'CONTINUE':
-                        if (openBlockStack.length == 0 || openBlockStack[openBlockStack.length - 1]) throw new PixSimAssemblySyntaxError(`Illegal CONTINUE instruction on line ${lineNo + 1}`);
+                        if (openBlockStack.length == 0 || openBlockStack[openBlockStack.length - 1]) throw new PixSimAssemblySyntaxError(`Illegal CONTINUE instruction (line ${lineNo + 1})`);
                         outputLine += 'continue;';
                         break;
                     case 'END':
-                        if (openBlockStack.length == 0) throw new PixSimAssemblySyntaxError(`Illegal END instruction on line ${lineNo + 1}`);
+                        if (openBlockStack.length == 0) throw new PixSimAssemblySyntaxError(`Illegal END instruction ( line ${lineNo + 1})`);
                         openBlockStack.pop();
                         outputLine += '}';
                         break;
                     default:
-                        throw new PixSimAssemblySyntaxError(`Unknown instruction ${instruction} on line ${lineNo + 1}`);
+                        throw new PixSimAssemblySyntaxError(`Unknown instruction '${instruction}' (line ${lineNo + 1})`);
                 }
             } else outputLine = PixSimAssemblyCompiler.#instructions[instruction];
             let parseExpression = (exparr) => {
                 let ret = '';
                 let closeStr = null;
+                let closeTimer = 0;
+                let lastExp = 1;
                 for (let exp of exparr) {
-                    if (closeStr !== null) {
-                        ret += ')';
+                    if (closeStr !== null && closeTimer == 0) {
+                        ret += closeStr;
                         closeStr = null;
                     }
+                    closeTimer--;
                     if (typeof exp == 'string') {
                         if (/<.*>/.test(exp)) {
                             if (/<.*\[.*]>/.test(exp)) ret += `getArray("${exp.substring(1, exp.indexOf('[')).replaceAll('"', '\\"')}",${exp.substring(exp.indexOf('[') + 1, exp.length - 2).replaceAll('"', '\\"')})`;
                             else ret += `getVariable("${exp.substring(1, exp.length - 1).replaceAll('"', '\\"')}")`;
+                            lastExp = 0;
                         } else if (/{.*}/.test(exp)) {
                             // convert id later
                             ret += exp;
+                            lastExp = 0;
                         } else {
-                            if (!isNaN(parseFloat(exp)) || /".*"/.test(exp)) ret += exp;
-                            else switch (exp) {
+                            if (!isNaN(parseFloat(exp)) || /".*"/.test(exp)) {
+                                if (lastExp == 0) throw new PixSimAssemblySyntaxError(`Unexpected value '${exp}' (line ${lineNo + 1})`);
+                                ret += exp;
+                                lastExp = 0;
+                            } else switch (exp) {
                                 case '+':
                                 case '-':
                                 case '*':
@@ -304,39 +308,60 @@ class PixSimAssemblyCompiler {
                                 case '&&':
                                 case '||':
                                 case '!':
+                                    if (lastExp == 1) throw new PixSimAssemblySyntaxError(`Unexpected operator '${exp}' (line ${lineNo + 1})`);
                                     ret += exp;
+                                    lastExp = 1;
                                     break;
                                 case '==':
+                                    if (lastExp == 1) throw new PixSimAssemblySyntaxError(`Unexpected operator '${exp}' (line ${lineNo + 1})`);
                                     ret += '===';
+                                    lastExp = 1;
                                     break;
                                 case '!=':
+                                    if (lastExp == 1) throw new PixSimAssemblySyntaxError(`Unexpected operator '${exp}' (line ${lineNo + 1})`);
                                     ret += '!==';
+                                    lastExp = 1;
                                     break;
                                 case '^':
+                                    if (lastExp == 1) throw new PixSimAssemblySyntaxError(`Unexpected operator '${exp}' (line ${lineNo + 1})`);
                                     ret += '**';
+                                    lastExp = 1;
                                     break;
                                 case '~=':
                                     ret += 'Math.round(';
                                     closeStr = ')';
+                                    closeTimer = 1;
+                                    lastExp = 1;
                                     break;
                                 case '~>':
                                     ret += 'Math.ceil(';
                                     closeStr = ')';
+                                    closeTimer = 1;
+                                    lastExp = 1;
                                     break;
                                 case '~<':
                                     ret += 'Math.floor(';
                                     closeStr = ')';
+                                    closeTimer = 1;
+                                    lastExp = 1;
                                     break;
                                 default:
+                                    if (lastExp == 0) throw new PixSimAssemblySyntaxError(`Unexpected value '${exp}' (line ${lineNo + 1})`);
                                     ret += `"${exp.replaceAll('"', '\\"')}"`;
+                                    lastExp = 0;
                             }
                         }
-                    } else ret += `(${parseExpression(exp)})`;
+                    } else {
+                        if (closeStr == ')' && closeTimer == 0) ret += parseExpression(exp);
+                        else ret += `(${parseExpression(exp)})`;
+                        lastExp = 0;
+                    }
                 }
                 if (closeStr !== null) {
-                    ret += ')';
-                    closeStr = null;
+                    if (closeTimer > 0) throw new PixSimAssemblySyntaxError(`Unexpected end of expression (line ${lineNo + 1})`);
+                    ret += closeStr;
                 }
+                if (lastExp == 1) throw new PixSimAssemblySyntaxError(`Unexpected end of expression (line ${lineNo + 1})`);
                 return ret;
             };
             if (isFunctionCall) outputLine += '(';

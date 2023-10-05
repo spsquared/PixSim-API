@@ -3,7 +3,7 @@ WRITE x 0
 WHILE <x><10
     SETPX <x> 2 {pusher_down}
     WAIT 500
-    WRITE x <x>+1
+    WRITE x ~<(<x>+2)
 END
 PRINT there should be pushers now
 IF <x>==10
