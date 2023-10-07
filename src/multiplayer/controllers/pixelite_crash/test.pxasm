@@ -1,9 +1,11 @@
 PRINT oof "(implicit)" string
 WRITE x 0
+DEFARR arr 10
 WHILE <x><10
     SETPX <x> 2 {pusher_down}
     WAIT 500
     WRITE x ~<(<x>+2)
+    WRITEARR arr <x> <x>+2
 END
 PRINT there should be pushers now
 IF <x>==10
@@ -13,21 +15,29 @@ ELIF <x><0
 ELSE
     PRINT oh no borken
 END
+FOR v arr
+    PRINT <v>
+END
 
-// Compiled version for rps
+// Compiled version for rps (indented manually)
 
-// console.log("oof","(implicit)","string");
-// setVariable("x",0);
+// await print("oof","(implicit)","string");
+// await setVariable("x",0);
+// await defArray("arr",10);
 // while(getVariable("x")<10){
-// setPixel(getVariable("x"),2,"piston_down");
-// wait(500);
-// setVariable("x",getVariable("x")+1);
+//     await setPixel(getVariable("x"),2,"pusher2");
+//     await wait(500);
+//     await setVariable("x",Math.floor(getVariable("x")+2));
+//     await setArray("arr",getVariable("x"),getVariable("x")+2);
 // }
-// console.log("there","should","be","pushers","now");
+// await print("there","should","be","pushers","now");
 // if(getVariable("x")===10){
-// console.log("x","is",10,"and","the","loop","worked");
+//     await print("x","is",10,"and","the","loop","worked");
 // }else if(getVariable("x")<0){
-// console.log("AAAAAAAAAAAAAAAAA");
+//     await print("AAAAAAAAAAAAAAAAA");
 // }else{
-// console.log("oh","no","borken");
+//     await print("oh","no","borken");
 // }
+// forEach("v","arr",()=>{
+//     await print(getVariable("v"));
+// });

@@ -34,7 +34,7 @@ class ControllerManager {
         app.get(httpPath + '/*', (req, res) => {
             let scriptName = req.path.replace(httpPath + '/', '');
             let format = req.query.format;
-            if (format != 'rps' && format != 'bps' && format != 'psp') {
+            if (format == undefined || scriptName.length == 0) {
                 res.sendStatus(400);
                 if (logEverything) this.#debug(`Request for ${scriptName} fail - 400`);
                 return;
@@ -130,7 +130,7 @@ class PixSimAssemblyCompiler {
         'DEFARR': 'defArray',
         'WRITEARR': 'setArray',
         'WAIT': 'wait',
-        'PRINT': 'console.log',
+        'PRINT': 'print',
         'CAMERA': 'moveCamera',
         'SETPX': 'setPixel',
         'GETPX': 'getPixel',
@@ -224,52 +224,53 @@ class PixSimAssemblyCompiler {
             }
             // convert instruction and expressions to js function calls
             let outputLine = '';
-            let isOpenBlock = false;
+            let isOpenBlock = 0;
             let isFunctionCall = true;
             if (PixSimAssemblyCompiler.#instructions[instruction] === undefined) {
                 isFunctionCall = false;
                 switch (instruction) {
                     case 'IF':
-                        isOpenBlock = true;
-                        openBlockStack.push(1);
+                        isOpenBlock = 1;
+                        openBlockStack.push(0);
                         outputLine = 'if(';
                         break;
                     case 'ELSE':
-                        if (openBlockStack.length == 0 || !openBlockStack[openBlockStack.length - 1]) throw new PixSimAssemblySyntaxError(`Illegal ELSE switch (line ${lineNo + 1})`);
+                        if (openBlockStack.length == 0 || openBlockStack[openBlockStack.length - 1] != 0) throw new PixSimAssemblySyntaxError(`Illegal ELSE switch (line ${lineNo + 1})`);
                         outputLine = '}else{';
                         break;
                     case 'ELIF':
-                        isOpenBlock = true;
-                        if (openBlockStack.length == 0 || !openBlockStack[openBlockStack.length - 1]) throw new PixSimAssemblySyntaxError(`Illegal ELIF switch (line ${lineNo + 1})`);
+                        isOpenBlock = 1;
+                        if (openBlockStack.length == 0 || openBlockStack[openBlockStack.length - 1] != 0) throw new PixSimAssemblySyntaxError(`Illegal ELIF switch (line ${lineNo + 1})`);
                         outputLine = '}else if(';
                         break;
                     case 'WHILE':
-                        isOpenBlock = true;
-                        openBlockStack.push(0);
+                        isOpenBlock = 1;
+                        openBlockStack.push(1);
                         outputLine += 'while(';
                         break;
                     case 'FOR':
-                        isOpenBlock = true;
-                        openBlockStack.push(0);
-                        throw new Error('FOR instruction not implemented yet');
+                        isOpenBlock = 2;
+                        openBlockStack.push(2);
+                        outputLine += 'forEach(';
                         break;
                     case 'BREAK':
-                        if (openBlockStack.length == 0 || openBlockStack[openBlockStack.length - 1]) throw new PixSimAssemblySyntaxError(`Illegal BREAK instruction (line ${lineNo + 1})`);
+                        if (openBlockStack.length == 0 || openBlockStack[openBlockStack.length - 1] == 0) throw new PixSimAssemblySyntaxError(`Illegal BREAK instruction (line ${lineNo + 1})`);
                         outputLine += 'break;';
                         break;
                     case 'CONTINUE':
-                        if (openBlockStack.length == 0 || openBlockStack[openBlockStack.length - 1]) throw new PixSimAssemblySyntaxError(`Illegal CONTINUE instruction (line ${lineNo + 1})`);
+                        if (openBlockStack.length == 0 || openBlockStack[openBlockStack.length - 1] == 0) throw new PixSimAssemblySyntaxError(`Illegal CONTINUE instruction (line ${lineNo + 1})`);
                         outputLine += 'continue;';
                         break;
                     case 'END':
                         if (openBlockStack.length == 0) throw new PixSimAssemblySyntaxError(`Illegal END instruction ( line ${lineNo + 1})`);
-                        openBlockStack.pop();
-                        outputLine += '}';
+                        let prev = openBlockStack.pop();
+                        if (prev == 2) outputLine += '});';
+                        else outputLine += '}';
                         break;
                     default:
                         throw new PixSimAssemblySyntaxError(`Unknown instruction '${instruction}' (line ${lineNo + 1})`);
                 }
-            } else outputLine = PixSimAssemblyCompiler.#instructions[instruction];
+            } else outputLine = 'await ' + PixSimAssemblyCompiler.#instructions[instruction];
             let parseExpression = (exparr) => {
                 let ret = '';
                 let closeStr = null;
@@ -368,22 +369,37 @@ class PixSimAssemblyCompiler {
             for (let expression of expressions) {
                 outputLine += parseExpression(expression) + ',';
             }
-            outputLine = outputLine.substring(0, outputLine.length - (expressions.length > 0)) + (isOpenBlock ? '){' : (isFunctionCall ? ');' : ''));
+            let lineCap = isFunctionCall ? ');' : '';
+            if (isOpenBlock == 1) lineCap = '){';
+            else if (isOpenBlock == 2) lineCap = ',()=>{';
+            outputLine = outputLine.substring(0, outputLine.length - (expressions.length > 0)) + lineCap;
             outputLines.push(outputLine);
         }
         if (openBlockStack.length > 0) throw new PixSimAssemblySyntaxError('Unclosed loop or switch');
-        const compiledScript = outputLines.reduce((prev, curr) => prev + '\n' + curr, '').substring(1);
+        const compiledScript = outputLines.join('');
         const outputMap = new Map();
         for (let format of this.#pixelConverter.conversionFormats) {
-            outputMap.set(format, compiledScript.replaceAll(/{.*?}/g, (match) => {
-                return `"${this.#pixelConverter.convertId(match.substring(1, match.length - 1), 'standard', format)}"`;
+            outputMap.set(format, compiledScript.replaceAll(/{[A-Za-z0-9\-_]*?}/g, (match) => {
+                let cid = this.#pixelConverter.convertId(match.substring(1, match.length - 1), 'standard', format);
+                if (cid == undefined) throw new PixSimAssemblyPixelIdError(`Unknown pixel id '${match.substring(1, match.length - 1)}'`);
+                return `"${cid}"`;
             }));
         }
         return outputMap;
     }
 }
 
-class PixSimAssemblySyntaxError extends Error {
+class PixSimAssemblyPixelIdError extends Error {
+    /**
+     * PixSimAssemblyPixelIdErrorConstructor
+     * @param {string} message 
+     */
+    constructor(message = undefined) {
+        super(message);
+        this.name = 'PixSimAssemblyPixelIdError';
+    }
+}
+class PixSimAssemblySyntaxError extends SyntaxError {
     /**
      * PixSimAssemblySyntaxErrorConstructor
      * @param {string} message 

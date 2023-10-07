@@ -30,10 +30,7 @@ class PixelConverter {
         const lookupTable = rawLookup.replaceAll('\r', '').split('\n').map((line) => line.split(','));
         let extract = async (gid, loader, script) => {
             await loader.ready;
-            if (logEverything) {
-                console.info('[PixelConverter] Extracting pixel IDs for ' + gid);
-                logger.info('[PixelConverter] Extracting pixel IDs for ' + gid);
-            }
+            if (logEverything) logger.info('[PixelConverter] Extracting pixel IDs for ' + gid);
             const pixels = await loader.execute(script);
             const from = new Uint8ClampedArray(Buffer.alloc(256, 0xff));
             const to = new Uint8ClampedArray(Buffer.alloc(256, 0xff));

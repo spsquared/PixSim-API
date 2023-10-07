@@ -51,9 +51,9 @@ class PixSimAPI {
             },
             {
                 id: 'bps',
-                url: 'https://blue-pixel-simulator.maitiansha1.repl.co/pixelSetup.js',
-                fallback: 'https://blue.pixelsimulator.repl.co/pixelSetup.js',
-                extractor: 'return 1;'
+                url: 'https://raw.githubusercontent.com/maitian352/Blue-Pixel-Simulator/master/pixelData.js',
+                fallback: 'https://blue.pixelsimulator.repl.co/pixelData.js',
+                extractor: 'return pixsimIds;'
             },
             // {
             //     id: 'psp',

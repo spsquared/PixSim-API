@@ -31,6 +31,11 @@ class MapManager {
         if (logger instanceof Logger) this.#logger = logger;
         app.get(httpPath + '/list/*', (req, res) => {
             let gameMode = req.path.replace(httpPath + '/list/', '').replace('/', '');
+            if (gameMode.length == 0) {
+                res.sendStatus(400);
+                if (logEverything) this.#debug(`Request for list ${gameMode} fail - 400`);
+                return;
+            }
             let list = this.mapList(gameMode);
             if (list.length > 0) {
                 res.send(list);
@@ -43,7 +48,7 @@ class MapManager {
         app.get(httpPath + '/*', (req, res) => {
             let format = req.query.format;
             let [gameMode, map] = req.path.replace(httpPath + '/', '').split('/');
-            if (format != 'rps' && format != 'bps' && format != 'psp') {
+            if (format == undefined || gameMode == undefined || gameMode.length == 0) {
                 res.sendStatus(400);
                 if (logEverything) this.#debug(`Request for ${gameMode}/${map} fail - 400`);
                 return;

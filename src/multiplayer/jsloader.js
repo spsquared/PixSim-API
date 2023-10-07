@@ -39,7 +39,7 @@ class JSLoader {
         if (typeof fallbackUrl != 'string') fallbackUrl = undefined;
         else if (!fallbackUrl.startsWith('http://') && !fallbackUrl.startsWith('https://')) throw new Error('"fallbackUrl" has to be an HTTP/HTTPS url');
         if (logger instanceof Logger) this.#logger = logger;
-        if (!fs.existsSync(cacheDir)) throw new Error('"cacheDir" must be a valid directory');
+        if (!fs.existsSync(cacheDir)) fs.mkdirSync(cacheDir);
         cacheDir = path.resolve(cacheDir);
         if (typeof onerror != 'function') onerror = (err) => { this.#error(err); };
         let loadStart = performance.now();
@@ -74,7 +74,16 @@ class JSLoader {
                         else if (logEverything) this.#debug(`Wrote "${cacheFileName}"`);
                     });
                     parseScript(minifiedScript);
-                }).catch((err) => this.#error(err.stack));
+                }).catch((err) => {
+                    // minification is probably not even necessary
+                    this.#warn(err.stack);
+                    this.#warn(`Failed to minify${loadingUrl}, saving uminified version!`);
+                    fs.writeFile(cacheFileName, this.#loadTime + '\n' + script, (err) => {
+                        if (err) this.#error(err.stack);
+                        else if (logEverything) this.#debug(`Wrote unminified version of "${cacheFileName}"`);
+                    });
+                    parseScript(script);
+                });
             };
             let load = () => {
                 if (allowCache && fs.existsSync(cacheDir)) {
@@ -101,7 +110,7 @@ class JSLoader {
                                 this.#fromCache = true;
                                 this.#info(`Loading ${loadingUrl} from cache (${cacheFileName})`);
                                 raw.shift();
-                                parseScript(raw.reduce((prev, curr) => prev + curr));
+                                parseScript(raw.reduce((prev, curr) => prev + '\n' + curr));
                                 return;
                             }
                             loadFromWeb();
@@ -172,7 +181,7 @@ class JSLoader {
             HTTP.get(url, (res) => {
                 if (res.statusCode != 200) {
                     res.resume();
-                    reject(new Error(`HTTP GET request to ${res.headers.location} failed: ${res.statusCode}`));
+                    reject(new Error(`HTTP GET request to ${res.headers.location ?? url} failed: ${res.statusCode}`));
                 }
                 let raw = '';
                 res.on('data', (chunk) => raw += chunk);
@@ -192,7 +201,7 @@ class JSLoader {
             HTTPS.get(url, (res) => {
                 if (res.statusCode != 200) {
                     res.resume();
-                    reject(new Error(`HTTPS GET request to ${res.headers.location} failed: ${res.statusCode}`));
+                    reject(new Error(`HTTPS GET request to ${res.headers.location ?? url} failed: ${res.statusCode}`));
                 }
                 let raw = '';
                 res.on('data', (chunk) => raw += chunk);
@@ -215,7 +224,7 @@ class JSLoader {
             }, (res) => {
                 if (res.statusCode != 200) {
                     res.resume();
-                    reject(new Error(`HTTPS POST request to ${res.headers.location} failed: ${res.statusCode}`));
+                    reject(new Error(`HTTPS POST request to https://www.toptal.com/developers/javascript-minifier/api/raw failed: ${res.statusCode}`));
                 }
                 let raw = '';
                 res.on('data', (chunk) => raw += chunk);
