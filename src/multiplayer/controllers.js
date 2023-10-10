@@ -2,6 +2,7 @@ const fs = require("fs");
 const Logger = require("../log");
 const PixelConverter = require("./converter");
 const path = require("path");
+const { Console } = require("console");
 
 /**
  * ControllerManager handles compiling and serving controller scripts from a directory
@@ -41,6 +42,7 @@ class ControllerManager {
             }
             let script = this.getScript(scriptName, format);
             if (script.length > 0) {
+                res.setHeader('Content-Type', 'text/plain'); // text/javascript would trigger browser parsing?
                 res.send(script);
                 if (logEverything) this.#debug(`Request for ${scriptName} success`);
                 return;
@@ -156,8 +158,6 @@ class PixSimAssemblyCompiler {
      * @throws A `PixSimAssemblySyntaxError` if compilation fails.
      */
     async compile(script) {
-        // script is first split into lines, and then parsed manually instead
-        // of splitting by space chars due to issues with strings and comments
         const lines = script.replaceAll('\r', '').split('\n').map((line) => line.trim());
         const outputLines = [];
         let openBlockStack = [];
@@ -179,11 +179,32 @@ class PixSimAssemblyCompiler {
                     let char = token[i];
                     let doublechar = token.substring(i, i + 2);
                     if (closingChar !== null) {
-                        currStr += char;
-                        if (char == closingChar) {
-                            closingChar = null;
+                        // make array access its own expression
+                        // <array[, i, ]>
+                        // within its own bracket (arrays are <[.*]\[ followed by anything followed by ]>)
+                        if (closingChar == '>' && char == '[') {
+                            currStr += char;
                             currLayer.push(currStr);
+                            layerStack.push(currLayer);
+                            currLayer = [];
                             currStr = '';
+                            closingChar = ']';
+                        } else if (char == closingChar) {
+                            closingChar = null;
+                            if (char == ']') {
+                                currLayer.push(currStr);
+                                let prevLayer = layerStack.pop();
+                                prevLayer.push(currLayer);
+                                currLayer = prevLayer;
+                                currStr = char;
+                                closingChar = '>';
+                            } else {
+                                currStr += char;
+                                currLayer.push(currStr);
+                                currStr = '';
+                            }
+                        } else {
+                            currStr += char;
                         }
                     } else {
                         if (/<[A-Za-z]/.test(doublechar)) {
@@ -201,7 +222,7 @@ class PixSimAssemblyCompiler {
                                 currStr = doublechar;
                                 currLayer.push(currStr);
                                 i++;
-                            } else if (/[+\-*\/%^><!][\d<~!()]/.test(doublechar) || /[+\-*\/%^><!]/.test(char)) {
+                            } else if (/[+\-*\/%^><!]/.test(char)) {
                                 currStr = char;
                                 currLayer.push(currStr);
                             }
@@ -213,13 +234,16 @@ class PixSimAssemblyCompiler {
                             currStr = '';
                         } else if (char == ')') {
                             if (currStr.length > 0) currLayer.push(currStr);
-                            layerStack[layerStack.length - 1].push(currLayer);
-                            currLayer = layerStack.pop();
+                            let prevLayer = layerStack.pop();
+                            if (prevLayer === undefined) throw new PixSimAssemblySyntaxError(`Unexpected expression closure (line ${lineNo + 1})`);
+                            prevLayer.push(currLayer);
+                            currLayer = prevLayer;
                             currStr = '';
                         } else currStr += char;
                     }
                 }
                 if (currStr.length > 0) currLayer.push(currStr);
+                if (layerStack.length > 0) throw new PixSimAssemblySyntaxError(`Unexpected end of expression (line ${lineNo + 1})`);
                 expressions.push(currLayer);
             }
             // convert instruction and expressions to js function calls
@@ -276,16 +300,20 @@ class PixSimAssemblyCompiler {
                 let closeStr = null;
                 let closeTimer = 0;
                 let lastExp = 1;
-                for (let exp of exparr) {
+                for (let i = 0; i < exparr.length; i++) {
+                    const exp = exparr[i];
                     if (closeStr !== null && closeTimer == 0) {
                         ret += closeStr;
                         closeStr = null;
                     }
                     closeTimer--;
                     if (typeof exp == 'string') {
-                        if (/<.*>/.test(exp)) {
-                            if (/<.*\[.*]>/.test(exp)) ret += `getArray("${exp.substring(1, exp.indexOf('[')).replaceAll('"', '\\"')}",${exp.substring(exp.indexOf('[') + 1, exp.length - 2).replaceAll('"', '\\"')})`;
-                            else ret += `getVariable("${exp.substring(1, exp.length - 1).replaceAll('"', '\\"')}")`;
+                        if (/<.*(>|\[)/.test(exp)) {
+                            if (/<.*\[/.test(exp)) {
+                                if (i + 2 >= exparr.length || !Array.isArray(exparr[i + 1]) || exparr[i + 2] != ']>') throw new PixSimAssemblySyntaxError(`Unexpected end of expression (line ${lineNo + 1})`);
+                                ret += `getArray("${exp.substring(1, exp.length - 1).replaceAll('"', '\\"')}",${parseExpression(exparr[i + 1])})`;
+                                i += 2;
+                            } else ret += `getVariable("${exp.substring(1, exp.length - 1).replaceAll('"', '\\"')}")`;
                             lastExp = 0;
                         } else if (/{.*}/.test(exp)) {
                             // convert id later
@@ -379,7 +407,7 @@ class PixSimAssemblyCompiler {
         const compiledScript = outputLines.join('');
         const outputMap = new Map();
         for (let format of this.#pixelConverter.conversionFormats) {
-            outputMap.set(format, compiledScript.replaceAll(/{[A-Za-z0-9\-_]*?}/g, (match) => {
+            outputMap.set(format, compiledScript.replaceAll(/{[A-Za-z0-9\-_]+?}/g, (match) => {
                 let cid = this.#pixelConverter.convertId(match.substring(1, match.length - 1), 'standard', format);
                 if (cid == undefined) throw new PixSimAssemblyPixelIdError(`Unknown pixel id '${match.substring(1, match.length - 1)}'`);
                 return `"${cid}"`;

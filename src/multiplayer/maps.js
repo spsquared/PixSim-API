@@ -38,7 +38,8 @@ class MapManager {
             }
             let list = this.mapList(gameMode);
             if (list.length > 0) {
-                res.send(list);
+                res.setHeader('Content-Type', 'text/json'); 
+                res.send(JSON.stringify(list));
                 if (logEverything) this.#debug(`Request for list ${gameMode} success`);
                 return;
             }
@@ -54,7 +55,8 @@ class MapManager {
                 return;
             }
             if (this.hasMap(gameMode, map)) {
-                res.send(this.getMap(gameMode, map, format));
+                res.setHeader('Content-Type', 'text/json'); 
+                res.send(JSON.stringify(this.getMap(gameMode, map, format)));
                 if (logEverything) this.#debug(`Request for ${gameMode}/${map} success`);
                 return;
             }

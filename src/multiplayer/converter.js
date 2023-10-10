@@ -15,14 +15,16 @@ class PixelConverter {
      * @param {Array<PixelFormat>} formats List of formats to load.
      * @param {Logger} logger `Logger` instance.
      * @param {boolean} logEverything To log or not to log everything.
+     * @param {boolean} allowCache Whether JSLoader is allowed to use the file cache or not.
      */
-    constructor(formats, logger, logEverything = false) {
+    constructor(formats, logger, logEverything = false, allowCache = true) {
         const loaders = [];
         for (let i in formats) {
             loaders.push(new JSLoader(formats[i].url, {
                 fallback: formats[i].fallback,
                 logger: logger,
                 logEverything, logEverything,
+                allowCache: allowCache,
                 allowInsecure: true
             }));
         }

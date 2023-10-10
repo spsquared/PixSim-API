@@ -26,7 +26,7 @@ if (process.env.PORT) {
     server.listen(5000);
 }
 
-const api = new PixSimAPI(app, server, { logEverything: false });
+const api = new PixSimAPI(app, server, { logEverything: process.argv.includes('--verbose'), allowCache: !process.argv.includes('--no-cache') });
 
 function stop() {
     api.close();
