@@ -131,7 +131,7 @@ class PixSimAssemblyCompiler {
         'WRITE': 'setVariable',
         'DEFARR': 'defArray',
         'WRITEARR': 'setArray',
-        'WAIT': 'wait',
+        'WAIT': 'await wait',
         'PRINT': 'print',
         'CAMERA': 'moveCamera',
         'SETPX': 'setPixel',
@@ -167,85 +167,75 @@ class PixSimAssemblyCompiler {
             const tokens = line.split('//')[0].split(' ');
             if (tokens[0].length == 0) continue;
             const instruction = tokens.shift();
-            // split expressions to prepare for conversion
             // expressions are arrays of values and operators, and can be nested to represent parenthesis
-            const expressions = [];
-            for (const token of tokens) {
-                const layerStack = [];
-                let currLayer = [];
-                let currStr = '';
-                let closingChar = null;
-                for (let i = 0; i < token.length; i++) {
+            let throwEOExpError = () => {
+                throw new PixSimAssemblySyntaxError(`Unexpected end of expression (line ${lineNo + 1})`);
+            };
+            let tokenizeExpression = (token) => {
+                const layer = [];
+                let i = 0;
+                while (i < token.length) {
                     let char = token[i];
                     let doublechar = token.substring(i, i + 2);
-                    if (closingChar !== null) {
-                        // make array access its own expression
-                        // <array[, i, ]>
-                        // within its own bracket (arrays are <[.*]\[ followed by anything followed by ]>)
-                        if (closingChar == '>' && char == '[') {
-                            currStr += char;
-                            currLayer.push(currStr);
-                            layerStack.push(currLayer);
-                            currLayer = [];
-                            currStr = '';
-                            closingChar = ']';
-                        } else if (char == closingChar) {
-                            closingChar = null;
-                            if (char == ']') {
-                                currLayer.push(currStr);
-                                let prevLayer = layerStack.pop();
-                                prevLayer.push(currLayer);
-                                currLayer = prevLayer;
-                                currStr = char;
-                                closingChar = '>';
+                    if (/<[A-Za-z]/.test(doublechar)) {
+                        let nextBracket = token.indexOf('[', i + 1) + 1;
+                        let nextAccessClose = token.indexOf('>', i + 1) + 1;
+                        if (nextAccessClose == 0) throwEOExpError();
+                        if (nextBracket > 0 && nextBracket < nextAccessClose) {
+                            if (token[nextBracket] == 'L' && token[nextBracket + 1] == ']') {
+                                layer.push(token.substring(i, nextBracket), ['L'], ']>');
+                                i = nextBracket + 3;
                             } else {
-                                currStr += char;
-                                currLayer.push(currStr);
-                                currStr = '';
+                                let subExpression = tokenizeExpression(token.substring(nextBracket));
+                                layer.push(token.substring(i, nextBracket), subExpression[0], ']>');
+                                i = nextBracket + subExpression[1] + 1;
                             }
+                            continue;
+                        } else if (/<[A-Za-z][A-Za-z\d]*?>/.test(token.substring(i, nextAccessClose))) {
+                            layer.push(token.substring(i, nextAccessClose));
+                            i = nextAccessClose;
+                            continue;
                         } else {
-                            currStr += char;
+                            console.log(token.substring(i, nextAccessClose))
+                        }
+                    } else if (char == '"') {
+                        let endQuote = token.indexOf('"', i + 1) + 1;
+                        if (endQuote == 0) throwEOExpError();
+                        layer.push(token.substring(i, endQuote));
+                        i = endQuote;
+                    } else if (char == '{') {
+                        let endBracket = token.indexOf('}', i + 1) + 1;
+                        if (endBracket == 0) throwEOExpError();
+                        layer.push(token.substring(i, endBracket));
+                        i = endBracket;
+                    } else if (char == '(') {
+                        let subExpression = tokenizeExpression(token.substring(i + 1));
+                        layer.push(subExpression[0]);
+                        i += subExpression[1] + 2;
+                    } else if (char == ')' || char == '}' || char == ']') {
+                        return [layer, i + 1];
+                    } else if (/\+.|-.|\*.|\/.|%.|\^.|>.|<.|==|!.|&&|\|\||~./.test(doublechar)) {
+                        if (/>=|<=|==|!=|&&|\|\||~=|~>|~</.test(doublechar)) {
+                            layer.push(doublechar);
+                            i += 2;
+                        } else {
+                            layer.push(char);
+                            i++;
                         }
                     } else {
-                        if (/<[A-Za-z]/.test(doublechar)) {
-                            currStr += char;
-                            closingChar = '>';
-                        } else if (char == '"') {
-                            currStr += char;
-                            closingChar = '"';
-                        } else if (char == '{') {
-                            currStr += char;
-                            closingChar = '}';
-                        } else if (/\+.|-.|\*.|\/.|%.|\^.|>=|<=|>.|<.|==|!=|&&|\|\||!.|~=|~>|~</.test(doublechar)) {
-                            if (currStr.length > 0) currLayer.push(currStr);
-                            if (/>=|<=|==|!=|&&|\|\||~=|~>|~</.test(doublechar)) {
-                                currStr = doublechar;
-                                currLayer.push(currStr);
-                                i++;
-                            } else if (/[+\-*\/%^><!]/.test(char)) {
-                                currStr = char;
-                                currLayer.push(currStr);
-                            }
-                            currStr = '';
-                        } else if (char == '(') {
-                            if (currStr.length > 0) currLayer.push(currStr);
-                            layerStack.push(currLayer);
-                            currLayer = [];
-                            currStr = '';
-                        } else if (char == ')') {
-                            if (currStr.length > 0) currLayer.push(currStr);
-                            let prevLayer = layerStack.pop();
-                            if (prevLayer === undefined) throw new PixSimAssemblySyntaxError(`Unexpected expression closure (line ${lineNo + 1})`);
-                            prevLayer.push(currLayer);
-                            currLayer = prevLayer;
-                            currStr = '';
-                        } else currStr += char;
+                        let str = token.substring(i).match(/^.+([+\-*\/%^<>!=&\|~()]|$)/);
+                        if (str !== null) {
+                            layer.push(str[0]);
+                            i += str[0].length;
+                        } else {
+                            layer.push(char);
+                            i++;
+                        }
                     }
                 }
-                if (currStr.length > 0) currLayer.push(currStr);
-                if (layerStack.length > 0) throw new PixSimAssemblySyntaxError(`Unexpected end of expression (line ${lineNo + 1})`);
-                expressions.push(currLayer);
-            }
+                return [layer, i + 1];
+            };
+            const expressions = tokens.map(t => tokenizeExpression(t)[0]);
             // convert instruction and expressions to js function calls
             let outputLine = '';
             let isOpenBlock = 0;
@@ -294,7 +284,7 @@ class PixSimAssemblyCompiler {
                     default:
                         throw new PixSimAssemblySyntaxError(`Unknown instruction '${instruction}' (line ${lineNo + 1})`);
                 }
-            } else outputLine = 'await ' + PixSimAssemblyCompiler.#instructions[instruction];
+            } else outputLine = PixSimAssemblyCompiler.#instructions[instruction];
             let parseExpression = (exparr) => {
                 let ret = '';
                 let closeStr = null;
@@ -310,7 +300,7 @@ class PixSimAssemblyCompiler {
                     if (typeof exp == 'string') {
                         if (/<.*(>|\[)/.test(exp)) {
                             if (/<.*\[/.test(exp)) {
-                                if (i + 2 >= exparr.length || !Array.isArray(exparr[i + 1]) || exparr[i + 2] != ']>') throw new PixSimAssemblySyntaxError(`Unexpected end of expression (line ${lineNo + 1})`);
+                                if (i + 2 >= exparr.length || !Array.isArray(exparr[i + 1]) || exparr[i + 2] != ']>') throwEOExpError();
                                 ret += `getArray("${exp.substring(1, exp.length - 1).replaceAll('"', '\\"')}",${parseExpression(exparr[i + 1])})`;
                                 i += 2;
                             } else ret += `getVariable("${exp.substring(1, exp.length - 1).replaceAll('"', '\\"')}")`;
@@ -319,14 +309,26 @@ class PixSimAssemblyCompiler {
                             // convert id later
                             ret += exp;
                             lastExp = 0;
+                        } else if (/".*"/.test(exp)) {
+                            ret += `"${exp.substring(1, exp.length - 1).replaceAll('"', '\\"')}"`;
+                            lastExp = 0;
                         } else {
-                            if (!isNaN(parseFloat(exp)) || /".*"/.test(exp)) {
+                            if (!isNaN(parseFloat(exp))) {
                                 if (lastExp == 0) throw new PixSimAssemblySyntaxError(`Unexpected value '${exp}' (line ${lineNo + 1})`);
                                 ret += exp;
                                 lastExp = 0;
+                            } else if (/".*"/.test(exp)) {
+                                if (lastExp == 0) throw new PixSimAssemblySyntaxError(`Unexpected value '${exp}' (line ${lineNo + 1})`);
+                                ret += `"${exp.substring(1, exp.length - 1).replaceAll('"', '\\"')}"`;
+                                lastExp = 0;
                             } else switch (exp) {
-                                case '+':
                                 case '-':
+                                    // negative sign exception
+                                    if (lastExp == 1 && (i >= exparr.length - 1 || !/\-?\d+\.?\d*/.test(exparr[i + 1]))) throw new PixSimAssemblySyntaxError(`Unexpected operator '${exp}' (line ${lineNo + 1})`);
+                                    ret += exp;
+                                    lastExp = 1;
+                                    break;
+                                case '+':
                                 case '*':
                                 case '/':
                                 case '%':
@@ -387,10 +389,10 @@ class PixSimAssemblyCompiler {
                     }
                 }
                 if (closeStr !== null) {
-                    if (closeTimer > 0) throw new PixSimAssemblySyntaxError(`Unexpected end of expression (line ${lineNo + 1})`);
+                    if (closeTimer > 0) throwEOExpError();
                     ret += closeStr;
                 }
-                if (lastExp == 1) throw new PixSimAssemblySyntaxError(`Unexpected end of expression (line ${lineNo + 1})`);
+                if (lastExp == 1) throwEOExpError();
                 return ret;
             };
             if (isFunctionCall) outputLine += '(';

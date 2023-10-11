@@ -26,6 +26,7 @@ if (process.env.PORT) {
     server.listen(5000);
 }
 
+// TODO: make game rooms run on a separate thread from io (which is main thread)
 const api = new PixSimAPI(app, server, { logEverything: process.argv.includes('--verbose'), allowCache: !process.argv.includes('--no-cache') });
 
 function stop() {
