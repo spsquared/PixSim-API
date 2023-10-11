@@ -1,10 +1,10 @@
 const { Server } = require('http');
 const { webcrypto, randomBytes } = require('crypto');
 const { Server: SocketIO, Socket } = require('socket.io');
-const Logger = require('./src/log');
-const PixelConverter = require('./src/multiplayer/converter');
-const MapManager = require('./src/multiplayer/maps');
-const ControllerManager = require('./src/multiplayer/controllers');
+const Logger = require('../log');
+const PixelConverter = require('./converter');
+const MapManager = require('./maps');
+const ControllerManager = require('./controllers');
 
 /**
  * A full API opening on an HTTP server utilizing Socket.IO.
