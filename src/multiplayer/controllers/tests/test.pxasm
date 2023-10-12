@@ -1,11 +1,14 @@
 PRINT oof "(implicit)" string
 WRITE x 0
 DEFARR arr 10
+FUNCTION add2 index
+    WRITEARR arr <index> <arr[<index>]>+2
+END
 WHILE <x><10
     SETPX <x> 2 {pusher_down}
     WAIT 500
     WRITE x ~<(<x>+2)
-    WRITEARR arr <x> <x>+2
+    FNCALL add2 <x>
 END
 PRINT there should be pushers now
 IF <x>==10
@@ -18,26 +21,3 @@ END
 FOR v arr
     PRINT <v>
 END
-
-// Compiled version for rps (indented manually)
-
-// await print("oof","(implicit)","string");
-// await setVariable("x",0);
-// await defArray("arr",10);
-// while(getVariable("x")<10){
-//     await setPixel(getVariable("x"),2,"pusher2");
-//     await wait(500);
-//     await setVariable("x",Math.floor(getVariable("x")+2));
-//     await setArray("arr",getVariable("x"),getVariable("x")+2);
-// }
-// await print("there","should","be","pushers","now");
-// if(getVariable("x")===10){
-//     await print("x","is",10,"and","the","loop","worked");
-// }else if(getVariable("x")<0){
-//     await print("AAAAAAAAAAAAAAAAA");
-// }else{
-//     await print("oh","no","borken");
-// }
-// forEach("v","arr",()=>{
-//     await print(getVariable("v"));
-// });
