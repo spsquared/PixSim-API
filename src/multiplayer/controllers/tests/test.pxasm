@@ -1,14 +1,14 @@
 PRINT oof "(implicit)" string
-WRITE x 0
+WRITE x 1
 DEFARR arr 10
 FUNCTION add2 index
-    WRITEARR arr <index> <arr[<index>]>+2
+    WRITEARR arr <index> <arr[<index>-1]>+2
 END
 WHILE <x><10
-    SETPX <x> 2 {pusher_down}
-    WAIT 500
-    WRITE x ~<(<x>+2)
+    SETPX <x>*2 20 {pusher_down}
+    WAIT 100
     FNCALL add2 <x>
+    WRITE x <x>+1
 END
 PRINT there should be pushers now
 IF <x>==10
@@ -18,6 +18,6 @@ ELIF <x><0
 ELSE
     PRINT oh no borken
 END
-FOR v arr
+FOR v <arr>
     PRINT <v>
 END

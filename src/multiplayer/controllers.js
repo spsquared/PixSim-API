@@ -134,15 +134,31 @@ class PixSimAssemblyCompiler {
         'FNCALL': 'await callFunction',
         'WAIT': 'await wait',
         'PRINT': 'print',
-        'SETPX': 'setPixel',
-        'GETPX': 'getPixel',
-        'SETAM': 'setAmount',
-        'GETAM': 'getAmount',
+        'SETPX': 'await setPixel',
+        'GETPX': 'await getPixel',
+        'SETAM': 'await setAmount',
+        'GETAM': 'await getAmount',
         'CMOVE': 'moveCamera',
         'CSHAKE': 'shakeCamera',
-        'WIN': 'await triggerWin',
-        'SOUND': 'await playSound'
+        'WIN': 'triggerWin',
+        'SOUND': 'playSound'
     };
+    static #instructionParamCounts = {
+        'WRITE': [2],
+        'DEFARR': [2, 3],
+        'WRITEARR': [3],
+        'FNCALL': Infinity,
+        'WAIT': [1],
+        'PRINT': Infinity,
+        'SETPX': [3],
+        'GETPX': [2],
+        'SETAM': [3],
+        'GETAM': [2],
+        'CMOVE': [3, 4],
+        'CSHAKE': [3],
+        'WIN': [1],
+        'SOUND': [3, 4]
+    }
 
     /**
      * Create a new PixSimAssembly Compiler
@@ -227,10 +243,14 @@ class PixSimAssemblyCompiler {
                             i++;
                         }
                     } else {
-                        let str = token.substring(i).match(/^.+([+\-*\/%^<>!=&\|~()]|$)/);
+                        let remain = token.substring(i);
+                        let str = remain.match(/^.+?[+\-*\/%^<>!=&\|~()\]]/);
                         if (str !== null) {
-                            layer.push(str[0]);
-                            i += str[0].length;
+                            layer.push(str[0].substring(0, str[0].length - 1));
+                            i += str[0].length - 1;
+                        } else if (!/^[\+\-*\/%^<>=!&\|~()[\]]$/.test(remain)) {
+                            layer.push(remain);
+                            i += remain.length
                         } else {
                             layer.push(char);
                             i++;
@@ -244,7 +264,7 @@ class PixSimAssemblyCompiler {
             let outputLine = '';
             let isOpenBlock = 0;
             let isFunctionCall = true;
-            let argCount = Infinity;
+            let argCount = PixSimAssemblyCompiler.#instructionParamCounts[instruction];
             if (PixSimAssemblyCompiler.#instructions[instruction] === undefined) {
                 isFunctionCall = false;
                 switch (instruction) {
@@ -252,59 +272,60 @@ class PixSimAssemblyCompiler {
                         isOpenBlock = 1;
                         openBlockStack.push(0);
                         outputLine = 'if(';
-                        argCount = 1;
+                        argCount = [1];
                         break;
                     case 'ELSE':
                         if (openBlockStack.length == 0 || openBlockStack[openBlockStack.length - 1] != 0) throw new PixSimAssemblySyntaxError(`Illegal ELSE switch (line ${lineNo + 1})`);
                         outputLine = '}else{';
-                        argCount = 0;
+                        argCount = [0];
                         break;
                     case 'ELIF':
                         isOpenBlock = 1;
                         if (openBlockStack.length == 0 || openBlockStack[openBlockStack.length - 1] != 0) throw new PixSimAssemblySyntaxError(`Illegal ELIF switch (line ${lineNo + 1})`);
                         outputLine = '}else if(';
-                        argCount = 1;
+                        argCount = [1];
                         break;
                     case 'WHILE':
                         isOpenBlock = 1;
                         openBlockStack.push(1);
                         outputLine += 'while(';
-                        argCount = 1;
+                        argCount = [1];
                         break;
                     case 'FOR':
                         isOpenBlock = 2;
                         openBlockStack.push(2);
-                        outputLine += 'forEach(';
-                        argCount = 2;
+                        outputLine += 'await forEach(';
+                        argCount = [2];
                         break;
                     case 'BREAK':
                         if (openBlockStack.length == 0 || openBlockStack[openBlockStack.length - 1] == 0) throw new PixSimAssemblySyntaxError(`Illegal BREAK instruction (line ${lineNo + 1})`);
                         outputLine += 'break;';
-                        argCount = 0;
+                        argCount = [0];
                         break;
                     case 'CONTINUE':
                         if (openBlockStack.length == 0 || openBlockStack[openBlockStack.length - 1] == 0) throw new PixSimAssemblySyntaxError(`Illegal CONTINUE instruction (line ${lineNo + 1})`);
                         outputLine += 'continue;';
-                        argCount = 0;
+                        argCount = [0];
                         break;
                     case 'FUNCTION':
-                        isOpenBlock = 3;
+                        isOpenBlock = 2;
                         openBlockStack.push(2);
                         outputLine += 'defFunction(';
                         if (expressions.length == 0) throw new PixSimAssemblySyntaxError(`Invalid argument count (line ${lineNo + 1})`);
+                        argCount = Infinity;
                         break;
                     case 'END':
                         if (openBlockStack.length == 0) throw new PixSimAssemblySyntaxError(`Illegal END instruction (line ${lineNo + 1})`);
                         let prev = openBlockStack.pop();
                         if (prev == 2 || prev == 3) outputLine += '});';
                         else outputLine += '}';
-                        argCount = 0;
+                        argCount = [0];
                         break;
                     default:
                         throw new PixSimAssemblySyntaxError(`Unknown instruction '${instruction}' (line ${lineNo + 1})`);
                 }
             } else outputLine = PixSimAssemblyCompiler.#instructions[instruction];
-            if (argCount != Infinity && expressions.length != argCount) throw new PixSimAssemblySyntaxError(`Invalid argument count (line ${lineNo + 1})`);
+            if (argCount != Infinity && !argCount.includes(expressions.length)) throw new PixSimAssemblySyntaxError(`Invalid argument count (line ${lineNo + 1})`);
             let parseExpression = (exparr) => {
                 let ret = '';
                 let closeStr = null;
@@ -421,8 +442,7 @@ class PixSimAssemblyCompiler {
             }
             let lineCap = isFunctionCall ? ');' : '';
             if (isOpenBlock == 1) lineCap = '){';
-            else if (isOpenBlock == 2) lineCap = ',()=>{';
-            else if (isOpenBlock == 3) lineCap = ',async()=>{';
+            else if (isOpenBlock == 2) lineCap = ',async()=>{';
             outputLine = outputLine.substring(0, outputLine.length - (expressions.length > 0)) + lineCap;
             outputLines.push(outputLine);
         }
