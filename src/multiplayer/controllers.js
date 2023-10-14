@@ -141,7 +141,10 @@ class PixSimAssemblyCompiler {
         'CMOVE': 'moveCamera',
         'CSHAKE': 'shakeCamera',
         'WIN': 'triggerWin',
-        'SOUND': 'playSound'
+        'SOUND': 'playSound',
+        'STARTSIM': 'startSim',
+        'STOPSIM': 'stopSim',
+        'TICK': 'await awaitTick'
     };
     static #instructionParamCounts = {
         'WRITE': [2],
@@ -157,7 +160,10 @@ class PixSimAssemblyCompiler {
         'CMOVE': [3, 4],
         'CSHAKE': [3],
         'WIN': [1],
-        'SOUND': [3, 4]
+        'SOUND': [3, 4],
+        'STARTSIM': [0, 1],
+        'STOPSIM': [0],
+        'TICK': [0]
     }
 
     /**
