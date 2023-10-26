@@ -327,9 +327,10 @@ class PixSimHandler {
         for (const room of rooms) {
             if (room.type == data.type || data.type == 'all') games.push({
                 code: room.id,
-                type: room.type,
+                type: room.gameType,
                 hostName: room.hostName,
-                open: room.open,
+                hostPlatform: room.hostClient,
+                open: room.isOpen,
                 teamSize: room.teamSize,
                 allowsSpectators: room.allowSpectators
             });
@@ -494,8 +495,7 @@ class Room {
     static #list = new Set();
     #api;
     #id = '';
-    #type = 'pixelcrash';
-    #gameModeHandler = null;
+    #type = 'pixelite_crash';
     #host = null;
     #teamA = new Set();
     #teamB = new Set();
@@ -729,7 +729,7 @@ class Room {
                     pixels: tick.data.teamPixelAmounts.map(arr => {
                         let mappedArr = [];
                         for (let n in arr) {
-                            if (arr[n] !== 0) mappedArr[this.#api.pixelConverter.convertSingle(n, this.#host.clientType, handler.clientType)] = arr[n];
+                            if (arr[n] !== 0) mappedArr[this.#api.pixelConverter.convert(n, this.#host.clientType, handler.clientType)] = arr[n];
                         }
                         return mappedArr;
                     })
@@ -775,7 +775,7 @@ class Room {
                     return;
                 }
                 let newdata = input.data;
-                if (input.data[5] != -1) newdata[5] = this.#api.pixelConverter.convertSingle(input.data[5], handler.clientType, this.#host.clientType);
+                if (input.data[5] != -1) newdata[5] = this.#api.pixelConverter.convert(input.data[5], handler.clientType, this.#host.clientType);
                 if (forward) {
                     this.#host.send('input', { type: input.type, team: team, data: newdata });
                 } else {
@@ -855,6 +855,12 @@ class Room {
      */
     get gameType() {
         return this.#type;
+    }
+    /**
+     * Game client of the host.
+     */
+    get hostClient() {
+        return this.#host.clientType;
     }
     /**
      * Username of the host.

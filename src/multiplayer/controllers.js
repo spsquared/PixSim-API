@@ -164,7 +164,7 @@ class PixSimAssemblyCompiler {
         'STARTSIM': [0, 1],
         'STOPSIM': [0],
         'TICK': [0]
-    }
+    };
 
     /**
      * Create a new PixSimAssembly Compiler
@@ -457,7 +457,7 @@ class PixSimAssemblyCompiler {
         const outputMap = new Map();
         for (let format of this.#pixelConverter.conversionFormats) {
             outputMap.set(format, compiledScript.replaceAll(/{[A-Za-z0-9\-_]+?}/g, (match) => {
-                let cid = this.#pixelConverter.convertId(match.substring(1, match.length - 1), 'standard', format);
+                let cid = this.#pixelConverter.convertStr(match.substring(1, match.length - 1), 'standard', format);
                 if (cid == undefined) throw new PixSimAssemblyPixelIdError(`Unknown pixel id '${match.substring(1, match.length - 1)}'`);
                 return `"${cid}"`;
             }));

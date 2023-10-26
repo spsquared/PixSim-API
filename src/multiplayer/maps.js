@@ -38,7 +38,7 @@ class MapManager {
             }
             let list = this.mapList(gameMode);
             if (list.length > 0) {
-                res.setHeader('Content-Type', 'text/json'); 
+                res.setHeader('Content-Type', 'text/json');
                 res.send(JSON.stringify(list));
                 if (logEverything) this.#debug(`Request for list ${gameMode} success`);
                 return;
@@ -55,7 +55,7 @@ class MapManager {
                 return;
             }
             if (this.hasMap(gameMode, map)) {
-                res.setHeader('Content-Type', 'text/json'); 
+                res.setHeader('Content-Type', 'text/json');
                 res.send(JSON.stringify(this.getMap(gameMode, map, format)));
                 if (logEverything) this.#debug(`Request for ${gameMode}/${map} success`);
                 return;
@@ -97,28 +97,140 @@ class MapManager {
     }
 
     #addMap(name, map) {
-        let [gameMode, id] = name.split('/').map((e) => e.split('\\'));
-        // oh no i have to write parsers and generators for all the formats
-        // tokenize save code into size and grid
-        // I HAVE NO IDEA HOW THE BPS SAVE CODE FORMAT WORKS AAAAAA ROTATION GRID (just slap _left and stuff onto it but still really hard)
-        const tokens = [];
-        const placeableTokens = [];
-        const teamTokens = [];
+        let [gameMode, id] = name.split(/\/|\\/g);
+        if (!this.#maps.has(gameMode)) this.#maps.set(gameMode, new Map());
+        this.#maps.get(gameMode).set(id, new Map());
         const mapData = {
-            width: 0,
-            height: 0,
-            tick: 0, // should stay as 0 lol
+            width: map.width,
+            height: map.height,
+            data: [],
+            placeableData: [[], []],
+            teamData: [],
+            scripts: map.scripts
         };
-        // tokens split into pairs of id and amount?
         switch (map.format) {
             case 'rps':
-
+                const tokens = map.data.split(':');
+                for (let str of tokens) {
+                    let t = str.split('-');
+                    mapData.data.push([this.#pixelConverter.convertStr(t[0], 'rps', 'standard'), parseInt(t[1] ?? 1, 16)]);
+                }
+                for (let i in map.placeableData) {
+                    const tokens = map.placeableData[i].split(':');
+                    let curr = 0;
+                    for (let s of tokens) {
+                        mapData.placeableData[i].push([curr, parseInt(s, 16)]);
+                        curr = (curr + 1) % 2;
+                    }
+                }
+                const tokensoneandahalf = map.teamData.split(':');
+                for (let str of tokensoneandahalf) {
+                    let t = str.split('-');
+                    mapData.teamData.push([parseInt(t[0]), parseInt(t[1], 16)]);
+                }
                 break;
             case 'bps':
+                const tokens2 = map.data.split(':');
+                const tokens2andahalf = map.rotationData.split(':');
+                const grid1 = new Array(mapData.width * mapData.height);
+                const grid2 = new Array(mapData.width * mapData.height);
+                let i = 0;
+                for (let str of tokens2) {
+                    let t = str.split('-');
+                    let n = parseInt(t[1] ?? 1, 36);
+                    for (let j = 0; j < n; j++) {
+                        grid1[i++] = t[0];
+                    }
+                }
+                for (let str of tokens2andahalf) {
+                    let t = str.split('-');
+                    let n = parseInt(t[1] ?? 1, 36);
+                    for (let j = 0; j < n; j++) {
+                        grid2[i++] = t[0];
+                    }
+                }
+                let len = 0;
+                let curr1 = grid1[0];
+                let curr2 = grid2[0];
+                for (let i = 0; i < grid1.length; i++) {
+                    if (grid1[i] != curr1 || curr2 != grid2[i]) {
+                        mapData.data.push([this.#pixelConverter.convertStr(curr1 + curr2, 'bps', 'standard'), len]);
+                        len = 0;
+                        curr1 = grid1[i];
+                        curr2 = grid2[i];
+                    }
+                    len++;
+                }
+                for (let i in map.placeableData) {
+                    const tokens = map.placeableData[i].split(':');
+                    for (let s of tokens) {
+                        let s1 = s.split('-');
+                        mapData.placeableData[i].push([parseInt(s1[0]), parseInt(s1[1], 36)]);
+                    }
+                }
+                const tokenstwoandthreequarters = map.teamData.split(':');
+                for (let str of tokenstwoandthreequarters) {
+                    let t = str.split('-');
+                    mapData.teamData.push([parseInt(t[0]), parseInt(t[1], 36)]);
+                }
                 break;
             case 'psp':
+                const tokens3 = map.data.split('|');
+                for (let str of tokens3) {
+                    let t = str.split('~');
+                    // have to get rid of extra pixel data as is not supported officially (oh no!)
+                    mapData.data.push([this.#pixelConverter.convertStr(t[0].split('`')[0], 'psp', 'standard'), parseInt(t[1] ?? 1)]);
+                }
+                // no placeable grid or team grid...
                 break;
         }
+        let rpsMapData = {
+            data: '',
+            placeableData: [],
+            teamData: []
+        };
+        let bpsMapData = {
+            data: '',
+            placeableData: [],
+            teamData: []
+        };
+        let pspMapData = {
+            data: '',
+            placeableData: [],
+            teamData: ''
+        };
+        for (let pair of mapData.data) {
+            rpsMapData.data += `${this.#pixelConverter.convertStr(pair[0], 'standard', 'rps')}-${pair[1].toString(16)}:`;
+            bpsMapData.data += `${this.#pixelConverter.convertStr(pair[0], 'standard', 'bps')}-${pair[1].toString(36)}:`;
+            pspMapData.data += `${this.#pixelConverter.convertStr(pair[0], 'standard', 'psp')}~${pair[1].toString(36)}|`;
+        }
+        for (let placeableData of mapData.placeableData) {
+            let curr = 0;
+            let len = 0;
+            let rpsData = '';
+            let bpsData = '';
+            let pspData = '';
+            for (let pair of placeableData) {
+                len += pair[1];
+                if (pair[0] != curr) {
+                    rpsData += len.toString(16) + ':';
+                    len = 0;
+                    curr = pair[0];
+                }
+                bpsData += `${pair[0]}-${pair[1].toString(36)}:`;
+            }
+            rpsMapData.placeableData.push(rpsData);
+            bpsMapData.placeableData.push(bpsData);
+            pspMapData.placeableData.push(pspData);
+        }
+        for (let pair of mapData.teamData) {
+            rpsMapData.teamData += `${pair[0]}-${pair[1].toString(16)}`;
+            bpsMapData.teamData += `${pair[0]}-${pair[1].toString(36)}`;
+            pspMapData.teamData += `${pair[0]}-${pair[1].toString(36)}`;
+        }
+        this.#maps.get(gameMode).get(id).set('rps', { ...mapData, ...rpsMapData });
+        this.#maps.get(gameMode).get(id).set('bps', { ...mapData, ...bpsMapData });
+        this.#maps.get(gameMode).get(id).set('psp', { ...mapData, ...pspMapData });
     }
 
     mapList(gameMode) {

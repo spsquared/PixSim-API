@@ -84,7 +84,10 @@ class PixelConverter {
             for (let i in promises) {
                 await promises[i];
             }
-            if (logEverything) logger.info('[PixelConverter] All pixel IDs extracted');
+            if (logEverything) {
+                logger.info('[PixelConverter] All pixel IDs extracted');
+                // stick copy of tables in here
+            }
             resolve();
         });
     }
@@ -96,7 +99,8 @@ class PixelConverter {
      * @param {string} to ID map to convert to.
      * @returns {number} Remapped numerical ID, or the input `n` if conversion is not possible.
      */
-    convertSingle(n, from, to) {
+    convert(n, from, to) {
+        if (from === to) return n;
         if (this.#tables.has(from) && this.#tables.has(to)) {
             return this.#tables.get(to).to[this.#tables.get(from).from[n]];
         } else return n;
@@ -134,7 +138,8 @@ class PixelConverter {
      * @param {string} to ID map to convert to.
      * @returns {string} Remapped string ID, or the input `id` if conversion is not possible.
      */
-    convertId(id, from, to) {
+    convertStr(id, from, to) {
+        if (from === to) return id;
         if (this.#idTables.has(from) && this.#idTables.has(to)) {
             return this.#idTables.get(to).to.get(this.#idTables.get(from).from.get(id));
         } else return id;
