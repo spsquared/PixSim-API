@@ -1,0 +1,15 @@
+WRITE i 0
+WHILE i<1
+    SETAM color_red <i> Infinity
+    SETAM color_orange <i> Infinity
+    SETAM color_yellow <i> Infinity
+    SETAM color_lime <i> Infinity
+    SETAM color_green <i> Infinity
+    SETAM color_cyan <i> Infinity
+    SETAM color_blue <i> Infinity
+    SETAM color_violet <i> Infinity
+    SETAM color_grey <i> Infinity
+    SETAM color_black <i> Infinity
+    SETAM color_brown <i> Infinity
+    WRITE i <i>+1
+END

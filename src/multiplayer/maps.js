@@ -111,12 +111,14 @@ class MapManager {
         switch (map.format) {
             case 'rps':
                 const tokens = map.data.split(':');
+                tokens.pop();
                 for (let str of tokens) {
                     let t = str.split('-');
                     mapData.data.push([this.#pixelConverter.convertStr(t[0], 'rps', 'standard'), parseInt(t[1] ?? 1, 16)]);
                 }
                 for (let i in map.placeableData) {
                     const tokens = map.placeableData[i].split(':');
+                    tokens.pop();
                     let curr = 0;
                     for (let s of tokens) {
                         mapData.placeableData[i].push([curr, parseInt(s, 16)]);
@@ -124,6 +126,7 @@ class MapManager {
                     }
                 }
                 const tokensoneandahalf = map.teamData.split(':');
+                tokensoneandahalf.pop();
                 for (let str of tokensoneandahalf) {
                     let t = str.split('-');
                     mapData.teamData.push([parseInt(t[0]), parseInt(t[1], 16)]);
@@ -132,6 +135,8 @@ class MapManager {
             case 'bps':
                 const tokens2 = map.data.split(':');
                 const tokens2andahalf = map.rotationData.split(':');
+                tokens2.pop();
+                tokens2andahalf.pop();
                 const grid1 = new Array(mapData.width * mapData.height);
                 const grid2 = new Array(mapData.width * mapData.height);
                 let i = 0;
@@ -163,12 +168,14 @@ class MapManager {
                 }
                 for (let i in map.placeableData) {
                     const tokens = map.placeableData[i].split(':');
+                    tokens.pop();
                     for (let s of tokens) {
                         let s1 = s.split('-');
                         mapData.placeableData[i].push([parseInt(s1[0]), parseInt(s1[1], 36)]);
                     }
                 }
                 const tokenstwoandthreequarters = map.teamData.split(':');
+                tokenstwoandthreequarters.pop();
                 for (let str of tokenstwoandthreequarters) {
                     let t = str.split('-');
                     mapData.teamData.push([parseInt(t[0]), parseInt(t[1], 36)]);
@@ -176,6 +183,7 @@ class MapManager {
                 break;
             case 'psp':
                 const tokens3 = map.data.split('|');
+                tokens3.pop();
                 for (let str of tokens3) {
                     let t = str.split('~');
                     // have to get rid of extra pixel data as is not supported officially (oh no!)
@@ -218,15 +226,16 @@ class MapManager {
                     curr = pair[0];
                 }
                 bpsData += `${pair[0]}-${pair[1].toString(36)}:`;
+                pspData += `${pair[0]}~${pair[1].toString(36)}|`;
             }
             rpsMapData.placeableData.push(rpsData);
             bpsMapData.placeableData.push(bpsData);
             pspMapData.placeableData.push(pspData);
         }
         for (let pair of mapData.teamData) {
-            rpsMapData.teamData += `${pair[0]}-${pair[1].toString(16)}`;
-            bpsMapData.teamData += `${pair[0]}-${pair[1].toString(36)}`;
-            pspMapData.teamData += `${pair[0]}-${pair[1].toString(36)}`;
+            rpsMapData.teamData += `${pair[0]}-${pair[1].toString(16)}:`;
+            bpsMapData.teamData += `${pair[0]}-${pair[1].toString(36)}:`;
+            pspMapData.teamData += `${pair[0]}~${pair[1].toString(36)}|`;
         }
         this.#maps.get(gameMode).get(id).set('rps', { ...mapData, ...rpsMapData });
         this.#maps.get(gameMode).get(id).set('bps', { ...mapData, ...bpsMapData });

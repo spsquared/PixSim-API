@@ -68,7 +68,8 @@ class PixelConverter {
             const idfrom = new Map();
             const idto = new Map();
             const col = lookupTable[0].findIndex((header) => header.toLowerCase() == 'standard');
-            if (col >= 0) for (const row of lookupTable) {
+            if (col >= 0) for (let i = 1; i < lookupTable.length; i++) {
+                const row = lookupTable[i];
                 let id = parseInt(row[0]);
                 idfrom.set(row[col], id);
                 idto.set(id, row[col]);
@@ -86,7 +87,33 @@ class PixelConverter {
             }
             if (logEverything) {
                 logger.info('[PixelConverter] All pixel IDs extracted');
-                // stick copy of tables in here
+                let longest = {};
+                for (const [format, table] of this.#idTables) {
+                    let l = 0;
+                    longest[format] = '';
+                    for (let [sid, nid] of table.from) {
+                        if (sid.length > l) l = sid.length;
+                    }
+                    for (let i = 0; i < l; i++) {
+                        longest[format] += ' ';
+                    }
+                }
+                let outputTable = `+`;
+                for (const [format] of this.#idTables) {
+                    outputTable += `-----${format.toUpperCase()}${longest[format].substring(format.length).replaceAll(' ', '-')}-+`;
+                }
+                for (let [nid, sid] of this.#idTables.get('standard').to) {
+                    if (sid == '') continue;
+                    outputTable += `\n| ${nid}${'   '.substring(('' + nid).length)} ${sid}${longest.standard.substring(sid.length)} | `;
+                    for (const [format, table] of this.#tables) {
+                        outputTable += ` ${table.to[nid]}${'   '.substring(('' + table.to[nid]).length)} ${this.#idTables.get(format).to.get(nid) ?? ''}${longest[format].substring((this.#idTables.get(format).to.get(nid) ?? '').length)} |`;
+                    }
+                }
+                outputTable += '\n+';
+                for (const [format,] of this.#idTables) {
+                    outputTable += `-----${longest[format].replaceAll(' ', '-')}-+`;
+                }
+                logger.debug(outputTable);
             }
             resolve();
         });
@@ -103,7 +130,7 @@ class PixelConverter {
         if (from === to) return n;
         if (this.#tables.has(from) && this.#tables.has(to)) {
             return this.#tables.get(to).to[this.#tables.get(from).from[n]];
-        } else return n;
+        } else return 255;
     }
     /**
      * Create a copy of and remap the pixel IDs of a compressed grid as according to the PixSim API specifications.
@@ -121,7 +148,7 @@ class PixelConverter {
             while (i < grid.length) {
                 header = compressed[i++];
                 for (let j = 0; j < 8 && i < grid.length; j++) {
-                    newGrid[i] = toTable[fromTable[grid[i]]];
+                    newGrid[i] = toTable[fromTable[grid[i]]] ?? 255;
                     if (header & 0b10000000 == 0) i++;
                     i++;
                     header <<= 1;
@@ -142,7 +169,7 @@ class PixelConverter {
         if (from === to) return id;
         if (this.#idTables.has(from) && this.#idTables.has(to)) {
             return this.#idTables.get(to).to.get(this.#idTables.get(from).from.get(id));
-        } else return id;
+        } else return null;
     }
 
     /**

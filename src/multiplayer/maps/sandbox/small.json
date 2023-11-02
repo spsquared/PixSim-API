@@ -1,0 +1,14 @@
+{
+    "format": "rps",
+    "width": 100,
+    "height": 100,
+    "data": "air-10000:",
+    "placeableData": [
+        "2710:",
+        "2710:"
+    ],
+    "teamData": "0-2710:",
+    "scripts": {
+        "load": "/sandbox/load"
+    }
+}

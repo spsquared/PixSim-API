@@ -31,7 +31,7 @@ class PixSimAPI {
      * @param {boolean} options.logEverything To log or not to log everything.
      * @param {boolean} options.allowCache Whether JSLoader is allowed to use the file cache or not.
      */
-    constructor(app, server, { path = '/pixsim-api/', mapsPath = './src/multiplayer/maps', controllersPath = './src/multiplayer/controllers', logPath = './', logEverything = false, allowCache = true } = {}) {
+    constructor(app, server, { path = '/pixsim-api/', mapsPath = './src/multiplayer/maps', controllersPath = './src/multiplayer/scripts', logPath = './', logEverything = false, allowCache = true } = {}) {
         if (typeof app != 'function' || app == null || !app.hasOwnProperty('mkcalendar') || typeof app.mkcalendar != 'function') throw new TypeError('"app" must be an Express app'); // no way to check if it's Express app
         if (!(server instanceof Server)) throw new TypeError('"server" must be an HTTP server');
         if (path.endsWith('/') && path.length > 1) path = path.substring(0, path.length - 1);
@@ -58,18 +58,18 @@ class PixSimAPI {
                 fallback: 'https://blue.pixelsimulator.repl.co/pixelData.js',
                 extractor: 'return pixsimIds;'
             },
-            // {
-            //     id: 'psp',
-            //     url: 'https://pixel-simulator-platformer-1.maitiansha1.repl.co/pixels.js',
-            //     extractor: 'let p = []; for (let i in PIXELS) p[PIXELS[i].id] = i; return p;'
-            // }
+            {
+                id: 'psp',
+                url: 'https://pixel-simulator-platformer-1.maitiansha1.repl.co/pixels.js',
+                extractor: 'let p = []; for (let i in PIXELS) p[PIXELS[i].id] = i; return p;'
+            }
         ], this.#logger, this.#loggerLogsEverything, allowCache);
         this.#pixelConverter.ready.then(() => { if (this.#loggerLogsEverything) this.#logger.info('PixelConverter ready'); });
         if (this.#loggerLogsEverything) this.#logger.info('Creating MapManager instance');
         this.#mapManager = new MapManager(app, path + '/maps/', mapsPath, this.#pixelConverter, this.#logger, this.#loggerLogsEverything);
         this.#mapManager.ready.then(() => { if (this.#loggerLogsEverything) this.#logger.info('MapManager ready'); });
         if (this.#loggerLogsEverything) this.#logger.info('Creating ControllerManager instance');
-        this.#controllerManager = new ControllerManager(app, path + '/controllers/', controllersPath, this.#pixelConverter, this.#logger, this.#loggerLogsEverything);
+        this.#controllerManager = new ControllerManager(app, path + '/scripts/', controllersPath, this.#pixelConverter, this.#logger, this.#loggerLogsEverything);
         this.#controllerManager.ready.then(() => { if (this.#loggerLogsEverything) this.#logger.info('ControllerManager ready'); });
         // wait for everything to finish loading, then open the server
         new Promise(async (resolve, reject) => {
