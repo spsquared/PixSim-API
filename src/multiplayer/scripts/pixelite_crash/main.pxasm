@@ -1,0 +1,27 @@
+PRINT game starts test <pixsim.tick>
+SETAM {color_collector} 0 2
+SETAM {color_collector} 1 2
+WRITE timeStart <pixsim.time>
+// find crystals
+WRITE sx 0
+WRITE sy 0
+DEFARR pixeliteCrystals 0
+DEFARR coordinate 2
+WHILE <sy><<pixsim.height>
+    WHILE <sx><<pixsim.width>
+        GETPX <sx> <sy> spx
+        IF <spx>=={pixelite_crystal}
+            WRITEARR coordinate 0 <sx>
+            WRITEARR coordinate 1 <sy>
+            WRITEARR pixeliteCrystals <pixeliteCrystals[L]> <coordinate>
+        END
+        WRITE sx <sx>+1
+    END
+    WRITE sx 0
+    WRITE sy <sy>+1
+END
+PRINT <pixeliteCrystals>
+// game loop
+WHILE 1
+    TICK
+END

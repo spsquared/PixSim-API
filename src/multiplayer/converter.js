@@ -129,7 +129,7 @@ class PixelConverter {
     convert(n, from, to) {
         if (from === to) return n;
         if (this.#tables.has(from) && this.#tables.has(to)) {
-            return this.#tables.get(to).to[this.#tables.get(from).from[n]];
+            return this.#tables.get(to).to[this.#tables.get(from).from[n]] ?? 255;
         } else return 255;
     }
     /**
@@ -168,7 +168,7 @@ class PixelConverter {
     convertStr(id, from, to) {
         if (from === to) return id;
         if (this.#idTables.has(from) && this.#idTables.has(to)) {
-            return this.#idTables.get(to).to.get(this.#idTables.get(from).from.get(id));
+            return this.#idTables.get(to).to.get(this.#idTables.get(from).from.get(id)) ?? 'null';
         } else return null;
     }
 

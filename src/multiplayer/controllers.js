@@ -88,6 +88,11 @@ class ControllerManager {
         });
     }
 
+    /**
+     * 
+     * @param {*} path 
+     * @returns 
+     */
     hasScript(path) {
         return this.#scripts.has(path);
     }
@@ -154,10 +159,10 @@ class PixSimAssemblyCompiler {
         'WAIT': [1],
         'PRINT': Infinity,
         'SETPX': [3],
-        'GETPX': [2],
+        'GETPX': [3],
         'SETAM': [3],
-        'GETAM': [2],
-        'CMOVE': [3, 4],
+        'GETAM': [3],
+        'CMOVE': [4, 5],
         'CSHAKE': [3],
         'WIN': [1],
         'SOUND': [3, 4],
@@ -217,12 +222,12 @@ class PixSimAssemblyCompiler {
                                 i = nextBracket + subExpression[1] + 1;
                             }
                             continue;
-                        } else if (/<[A-Za-z][A-Za-z\d]*?>/.test(token.substring(i, nextAccessClose))) {
+                        } else if (/<(pixsim\.)?[A-Za-z][A-Za-z\d]*?>/.test(token.substring(i, nextAccessClose))) {
                             layer.push(token.substring(i, nextAccessClose));
                             i = nextAccessClose;
                             continue;
                         } else {
-                            console.log(token.substring(i, nextAccessClose))
+                            throw new PixSimAssemblySyntaxError(`Invalid variable accessor (line ${lineNo + 1})`)
                         }
                     } else if (char == '"') {
                         let endQuote = token.indexOf('"', i + 1) + 1;
@@ -350,7 +355,8 @@ class PixSimAssemblyCompiler {
                                 if (i + 2 >= exparr.length || !Array.isArray(exparr[i + 1]) || exparr[i + 2] != ']>') throwEOExpError();
                                 ret += `getArray("${exp.substring(1, exp.length - 1).replaceAll('"', '\\"')}",${parseExpression(exparr[i + 1])})`;
                                 i += 2;
-                            } else ret += `getVariable("${exp.substring(1, exp.length - 1).replaceAll('"', '\\"')}")`;
+                            } else if (/<pixsim\./.test(exp)) ret += `await getReserved("${exp.substring(8, exp.length - 1).replaceAll('"', '\\"')}")`;
+                            else ret += `getVariable("${exp.substring(1, exp.length - 1).replaceAll('"', '\\"')}")`;
                             lastExp = 0;
                         } else if (/{.*}/.test(exp)) {
                             // convert id later

@@ -58,11 +58,11 @@ class PixSimAPI {
                 fallback: 'https://blue.pixelsimulator.repl.co/pixelData.js',
                 extractor: 'return pixsimIds;'
             },
-            {
-                id: 'psp',
-                url: 'https://pixel-simulator-platformer-1.maitiansha1.repl.co/pixels.js',
-                extractor: 'let p = []; for (let i in PIXELS) p[PIXELS[i].id] = i; return p;'
-            }
+            // {
+            //     id: 'psp',
+            //     url: 'https://pixel-simulator-platformer-1.maitiansha1.repl.co/pixels.js',
+            //     extractor: 'let p = []; for (let i in PIXELS) p[PIXELS[i].id] = i; return p;'
+            // }
         ], this.#logger, this.#loggerLogsEverything, allowCache);
         this.#pixelConverter.ready.then(() => { if (this.#loggerLogsEverything) this.#logger.info('PixelConverter ready'); });
         if (this.#loggerLogsEverything) this.#logger.info('Creating MapManager instance');
@@ -286,7 +286,7 @@ class PixSimHandler {
             this.#ip = socket.handshake.headers['x-forwarded-for'] ?? socket.handshake.address ?? socket.request.socket.remoteAddress ?? socket.client.conn.remoteAddress ?? 'un-ip';
             this.#username = data.username;
             this.#clientType = data.client;
-            this.#api.logger.info(`Connection: ${this.debugId}`);
+            this.#info(`Connection: ${this.debugId}`);
             // verify password
             try {
                 // console.log(await this.#api.decode(data.password));
@@ -301,7 +301,7 @@ class PixSimHandler {
             this.#socket.on('joinGame', (data) => this.#joinGame(data));
             this.#socket.on('leaveGame', () => this.leaveGame());
             this.#socket.on('disconnect', (reason) => {
-                this.#api.logger.info(`Disconnection: ${this.debugId} - ${reason}`)
+                this.#info(`Disconnection: ${this.debugId} - ${reason}`)
             });
         });
         setImmediate(async () => this.#socket.emit('requestClientInfo', await this.#api.publicKey));
@@ -321,7 +321,7 @@ class PixSimHandler {
     }
     #getPublicRooms(data) {
         if (typeof data != 'object' || data == null) return;
-        if (this.#api.logEverything) this.#api.logger.info(`${this.debugId} requested list of public games`);
+        if (this.#api.logEverything) this.#info(`${this.debugId} requested list of public games`);
         const rooms = Room.publicRooms(data.spectating);
         const games = [];
         for (const room of rooms) {
@@ -339,7 +339,7 @@ class PixSimHandler {
     }
     #joinGame(data) {
         if (typeof data != 'object' || data == null || this.#currentRoom != null) return;
-        if (this.#api.logEverything) this.#api.logger.info(`${this.debugId} attempted to join game ${data.code}`);
+        if (this.#api.logEverything) this.#info(`${this.debugId} attempted to join game ${data.code}`);
         const rooms = Room.openRooms(data.spectating);
         for (const room of rooms) {
             if (room.id == data.code) {
@@ -458,11 +458,18 @@ class PixSimHandler {
     get logEverything() {
         return this.#api.logEverything;
     }
-    /**
-     * The `Logger` instance used for logging.
-     */
-    get logger() {
-        return this.#api.logger;
+    
+    #debug(text) {
+        this.#api.logger.debug(`[PixSimHandler ${this.debugId}] ${text}`);
+    }
+    #info(text) {
+        this.#api.logger.info(`[PixSimHandler ${this.debugId}] ${text}`);
+    }
+    #warn(text) {
+        this.#api.logger.warn(`[PixSimHandler ${this.debugId}] ${text}`);
+    }
+    #error(text) {
+        this.#api.logger.error(`[PixSimHandler ${this.debugId}] ${text}`);
     }
 
     /**
@@ -472,9 +479,9 @@ class PixSimHandler {
      */
     destroy(reason = 'disconnected', kicked) {
         if (kicked) {
-            this.#api.logger.warn(`${this.debugId} kicked - ${reason}`);
+            this.#warn(`${this.debugId} kicked - ${reason}`);
         } else {
-            this.#api.logger.info(`Disconnection: ${this.debugId}`);
+            this.#info(`Disconnection: ${this.debugId}`);
         }
         if (this.#currentRoom) this.#currentRoom.leave(this);
         this.#socket.disconnect();
@@ -515,7 +522,7 @@ class Room {
         this.#host = handler;
         this.#api = this.#host.api;
         this.#id = randomBytes(4).toString('hex').toUpperCase();
-        this.#host.logger.info(`${handler.debugId} created game ${this.#id}`);
+        this.#info(`${handler.debugId} created game ${this.#id}`);
         Room.#list.add(this);
         this.#host.joinGameRoom(this.#id);
         this.#host.addExternalListener(this.#id, 'changeTeam', (team) => this.changeTeam(this.#host, team));
@@ -539,7 +546,7 @@ class Room {
     join(handler, spectating = false) {
         if (!(handler instanceof PixSimHandler) || typeof spectating != 'boolean' || (!spectating && !this.#open)) return;
         if (spectating || (this.#teamA.size >= this.#teamSize && this.#teamB.size >= this.#teamSize)) {
-            this.#host.logger.info(`${handler.debugId} joined game ${this.#id} as a spectator`);
+            this.#info(`${handler.debugId} joined game ${this.#id} as a spectator`);
             this.#spectators.add(handler);
             if (!spectating) handler.send('forcedSpectator');
             handler.joinGameRoom(this.#id);
@@ -549,11 +556,11 @@ class Room {
             if (!this.#open) handler.send('gameStart');
         } else if (this.#bannedPlayers.indexOf(handler.username) == -1) {
             if (this.#teamB.size < this.#teamA.size) {
-                this.#host.logger.info(`${handler.debugId} joined game ${this.#id} on team Beta`);
+                this.#info(`${handler.debugId} joined game ${this.#id} on team Beta`);
                 this.#teamB.add(handler);
                 handler.send('joinSuccess', 1);
             } else {
-                this.#host.logger.info(`${handler.debugId} joined game ${this.#id} on team Alpha`);
+                this.#info(`${handler.debugId} joined game ${this.#id} on team Alpha`);
                 this.#teamA.add(handler);
                 handler.send('joinSuccess', 0);
             }
@@ -578,7 +585,7 @@ class Room {
         if (this.#teamA.has(handler)) this.#teamA.delete(handler);
         else if (this.#teamB.has(handler)) this.#teamB.delete(handler);
         else return;
-        this.#host.logger.info(`${handler.debugId} switched to ${team ? 'team Beta' : 'team Alpha'} in game ${this.#id}`);
+        this.#info(`${handler.debugId} switched to ${team ? 'team Beta' : 'team Alpha'} in game ${this.#id}`);
         if (team) this.#teamB.add(handler);
         else this.#teamA.add(handler);
         handler.send('team', team)
@@ -594,7 +601,7 @@ class Room {
         else if (this.#teamA.has(handler)) this.#teamA.delete(handler);
         else if (this.#teamB.has(handler)) this.#teamB.delete(handler);
         else return;
-        this.#host.logger.info(`${handler.debugId} left game ${this.#id}`);
+        this.#info(`${handler.debugId} left game ${this.#id}`);
         handler.leaveGameRoom(this.#id);
         handler.removeAllExternalListeners(this.#id)
         if (handler == this.#host) this.destroy();
@@ -613,7 +620,7 @@ class Room {
         let handler2 = Array.from(this.#teamA).find(handler => handler.username == username2) ?? Array.from(this.#teamB).find(handler => handler.username == username2);
         if (handler) {
             if (handler2) {
-                if (this.#host.logEverything) this.#host.logger.info(`${this.#host.debugId} swapped ${handler.debugId} with ${handler2.debugId}`);
+                if (this.#host.logEverything) this.#info(`${this.#host.debugId} swapped ${handler.debugId} with ${handler2.debugId}`);
                 let handler1Team = this.#teamB.has(handler);
                 let handler2Team = this.#teamB.has(handler2);
                 if (handler1Team == handler2Team) {
@@ -629,12 +636,12 @@ class Room {
                     this.#teamB.add(handler);
                     this.#teamA.add(handler2);
                 } else {
-                    this.#host.logger.fatal(`Attempted to swap ${handler.debugId} with ${handler.debugId}, reached impossible case.`);
+                    this.#error(`Attempted to swap ${handler.debugId} with ${handler.debugId}, reached impossible case.`);
                     process.abort();
                 }
                 this.#updateTeamLists();
             } else {
-                if (this.#host.logEverything) this.#host.logger.info(`${this.#host.debugId} moved ${handler.debugId}`);
+                if (this.#host.logEverything) this.#info(`${this.#host.debugId} moved ${handler.debugId}`);
                 this.changeTeam(handler, team);
             }
         }
@@ -649,7 +656,7 @@ class Room {
             ?? Array.from(this.#teamA).find(handler => handler.username == username)
             ?? Array.from(this.#teamB).find(handler => handler.username == username);
         if (handler) {
-            this.#host.logger.info(`${this.#host.debugId} kicked ${handler.debugId} from game ${this.#id}`);
+            this.#info(`${this.#host.debugId} kicked ${handler.debugId} from game ${this.#id}`);
             handler.send('gameKicked');
             handler.leaveGame();
         }
@@ -659,9 +666,9 @@ class Room {
      */
     start() {
         if (this.#teamA.size == this.#teamSize && this.#teamB.size == this.#teamSize && this.#open) {
-            this.#host.logger.info(`Game ${this.#id} started`);
+            this.#info(`Game ${this.#id} started`);
             this.#open = false;
-            if (this.#host.logEverything) this.#host.logger.info(`Game ${this.#id} pinging players`);
+            if (this.#host.logEverything) this.#debug(`Game ${this.#id} pinging players`);
             new Promise((resolve, reject) => {
                 let responses = 0;
                 for (let player of [...this.#teamA, ...this.#teamB]) {
@@ -674,7 +681,7 @@ class Room {
                     player.send('gameStart');
                 }
             }).then(() => {
-                if (this.#host.logEverything) this.#host.logger.info(`Game ${this.#id} connections checked, starting proxy mode`);
+                if (this.#host.logEverything) this.#debug(`Game ${this.#id} connections checked, starting proxy mode`);
                 this.#host.addExternalListener(this.#id, 'gridSize', (size) => this.#handleGridSize(size));
                 this.#host.addExternalListener(this.#id, 'tick', (tick) => this.#handleTick(tick));
                 this.#teamA.forEach((handler) => {
@@ -815,26 +822,26 @@ class Room {
         if ((type === 'pixelcrash' || type === 'resourcerace') && this.#open) {
             this.#type = type;
             this.#host.sendToGameRoom('gameType', this.#type);
-            if (this.#host.logEverything) this.#host.logger.info(`game ${this.#id} set gameType to ${this.#type}`);
+            if (this.#host.logEverything) this.#info(`game ${this.#id} set gameType to ${this.#type}`);
         }
     }
     set allowSpectators(bool) {
         if (typeof bool == 'boolean' && this.#open) {
             this.#allowSpectators = bool;
-            if (this.#host.logEverything) this.#host.logger.info(`game ${this.#id} set allowSpectators to ${this.#allowSpectators}`);
+            if (this.#host.logEverything) this.#info(`game ${this.#id} set allowSpectators to ${this.#allowSpectators}`);
         }
     }
     set publicGame(bool) {
         if (typeof bool == 'boolean' && this.#open) {
             this.#public = bool;
-            if (this.#host.logEverything) this.#host.logger.info(`game ${this.#id} set publicGame to ${this.#public}`);
+            if (this.#host.logEverything) this.#info(`game ${this.#id} set publicGame to ${this.#public}`);
         }
     }
     set teamSize(size) {
         if (typeof size == 'number' && size >= 1 && size <= 3 && this.#open) {
             this.#teamSize = parseInt(size);
             this.#updateTeamLists();
-            if (this.#host.logEverything) this.#host.logger.info(`game ${this.#id} set teamSize to ${this.#teamSize}`);
+            if (this.#host.logEverything) this.#info(`game ${this.#id} set teamSize to ${this.#teamSize}`);
         }
     }
 
@@ -903,12 +910,25 @@ class Room {
      * Safely stops the game and cleans up.
      */
     destroy() {
-        this.#host.logger.info(`game ${this.#id} closed`);
+        this.#info(`game ${this.#id} closed`);
         this.#forEachHandler((handler) => {
             handler.send('gameEnd');
             handler.leaveGame();
         });
         Room.#list.delete(this);
+    }
+    
+    #debug(text) {
+        this.#host.api.logger.debug(`[Room ${this.#id}] ${text}`);
+    }
+    #info(text) {
+        this.#host.api.logger.info(`[Room ${this.#id}] ${text}`);
+    }
+    #warn(text) {
+        this.#host.api.logger.warn(`[Room ${this.#id}] ${text}`);
+    }
+    #error(text) {
+        this.#host.api.logger.error(`[Room ${this.#id}] ${text}`);
     }
 
     /**

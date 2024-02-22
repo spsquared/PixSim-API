@@ -219,12 +219,12 @@ class MapManager {
             let bpsData = '';
             let pspData = '';
             for (let pair of placeableData) {
-                len += pair[1];
                 if (pair[0] != curr) {
                     rpsData += len.toString(16) + ':';
                     len = 0;
                     curr = pair[0];
                 }
+                len += pair[1];
                 bpsData += `${pair[0]}-${pair[1].toString(36)}:`;
                 pspData += `${pair[0]}~${pair[1].toString(36)}|`;
             }
@@ -242,14 +242,32 @@ class MapManager {
         this.#maps.get(gameMode).get(id).set('psp', { ...mapData, ...pspMapData });
     }
 
+    /**
+     * Fetch an array of map IDs in a particular game mode.
+     * @param {string} gameMode Gamemode ID to fetch list from.
+     * @returns {Array<string>} Array of map IDs within that game mode.
+     */
     mapList(gameMode) {
         if (this.#maps.has(gameMode)) return Array.from(this.#maps.get(gameMode).keys());
         else return [];
     }
+    /**
+     * Check if a map with the ID `name` exists within the game mode of ID `gameMode`.
+     * @param {string} gameMode ID of the game mode.
+     * @param {string} name ID of the map.
+     * @returns {boolean} If the map exists in that game mode.
+     */
     hasMap(gameMode, name) {
         if (this.#maps.has(gameMode) && this.#maps.get(gameMode).has(name)) return true;
         return false;
     }
+    /**
+     * Get the map data of the map under the game mode `gameMode` with the ID `name`, in the specified `format`.
+     * @param {string} gameMode ID of the game mode.
+     * @param {string} name ID of the map.
+     * @param {string} format ID of the format the map should be supplied in.
+     * @returns {MapData|null} Data for the map in `MapData  format, or `null` if no such map exists.
+     */
     getMap(gameMode, name, format) {
         if (!this.hasMap(gameMode, name)) return null;
         return this.#maps.get(gameMode).get(name).get(format) ?? null;
@@ -279,5 +297,17 @@ class MapManager {
         if (this.#logger) this.#logger.error('[MapManager] ' + text);
     }
 }
+/**
+ * Format of standard PixSim API map data.
+ * @typedef {{width: number, height: number, data: string, placeableData: Array<string>, teamData: string, scripts: object}} MapData
+ * @param width Integer representing the width of the map.
+ * @param height Integer representing the height of the map.
+ * @param data Encoded grid.
+ * @param placeableData Length-2 array of two encoded boolean grids, each representing the placeable grids of their respective teams.
+ * @param teamData Encoded team grid.
+ * @param scripts Object, where keys of values are their trigger events and values are the paths of scripts.
+ */
 
+module.exports.MapManager = MapManager;
+module.exports.MapData = this.MapData;
 module.exports = MapManager;

@@ -1,7 +1,0 @@
-DEFARR 2.5 3
-
-DEFARR array 10
-WRITE x 0
-WHILE <x><<array[L]>
-    PRINT <array[<x>]>
-END
